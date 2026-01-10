@@ -133,7 +133,7 @@ jobs:
         git add -u
         git commit -m "Release '${{ env.version }}'"
         git tag -a $tag -m "release ${{ env.version }}"
-        git push origin unmain
+        git push origin ${{ github.ref_name }}
         git push origin tag $tag
 
         gh release create $tag --target ${{ github.ref_name }} -t "Release ${{ env.version }}"
