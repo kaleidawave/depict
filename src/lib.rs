@@ -29,3 +29,8 @@ pub struct Entry {
     /// TODO maybe fixed
     pub entries: Vec<(String, u32)>,
 }
+
+pub fn adjacent_sde_path() -> Option<String> {
+    let path = std::env::current_exe().ok()?;
+    path.parent()?.join("sde").to_str().map(str::to_owned)
+}

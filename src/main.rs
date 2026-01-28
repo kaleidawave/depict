@@ -90,7 +90,7 @@ fn main() {
         }
         #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
         "install-qbdi" => {
-            use std::process::Command;
+            use std::process::{Command, Stdio};
 
             let file = "qbdi.pkg";
 
@@ -99,7 +99,11 @@ fn main() {
                 .arg("-L")
                 .arg("-o")
                 .arg(file)
-                .output()
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit())
+                .spawn()
+                .unwrap()
+                .wait()
                 .unwrap();
 
             Command::new("sudo")
@@ -108,10 +112,61 @@ fn main() {
                 .arg(file)
                 .arg("-target")
                 .arg("~")
-                .output()
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit())
+                .spawn()
+                .unwrap()
+                .wait()
                 .unwrap();
 
             std::fs::remove_file(file).unwrap();
+        }
+        #[cfg(all(target_os = "linux"))]
+        "install-sde" => {
+            // Based on https://github.com/petarpetrovt/setup-sde/blob/main/index.ts
+
+            use std::process::{Command, Stdio};
+
+            /* function getPlatformIdentifier(): string {
+                switch (process.platform) {
+                    case "win32": return `win`;
+                    case "darwin": return `mac`;
+                    case "linux": return `lin`;
+                    default: throw new Error(`Platform '${process.platform}' is not supported in this context.`);
+                }
+            }*/
+
+            let base = "https://downloadmirror.intel.com";
+            let platform = "lin";
+
+            let url = format!("{base}/859732/sde-external-9.58.0-2025-06-16-{platform}.tar.xz");
+
+            let file = "sde-temp-file.tar.bz2";
+
+            Command::new("curl")
+                .arg(url)
+                .arg("-o")
+                .arg(file)
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit())
+                .spawn()
+                .unwrap()
+                .wait()
+                .unwrap();
+
+            Command::new("tar")
+                .arg("-xvjf")
+                .arg(file)
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit())
+                .spawn()
+                .unwrap()
+                .wait()
+                .unwrap();
+
+            let dest = depict::adjacent_sde_path().unwrap();
+            std::fs::rename("sde-external-9.58.0-2025-06-16-lin/sde", dest).unwrap();
+            // exec.exec(`"${tarExePath}"`, [`x`, `--force-local`, `-C`, `${extractedFilesPath}`, `-f`, `${tarFilePath}`]);
         }
         tool => {
             println!("unknown tool {tool:?}. run with 'qbdi', 'sde', 'perf-events' or 'time'");

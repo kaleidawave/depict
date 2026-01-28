@@ -30,12 +30,12 @@ jobs:
       if: ${{ matrix.os == 'macos-latest' }}
       with: { cmake-version: '3.31.7' }
     
-    - name: Setup SDE binaries (linux or windows)
-      if: ${{ matrix.os == 'ubuntu-latest' || matrix.os == 'windows-latest' }}
-      uses: petarpetrovt/setup-sde@v3.0
-      with:
-        environmentVariableName: SDE_PATH # default value is `SDE_PATH`
-        sdeVersion: 9.58.0 # possible values: 9.58.0 (default), 9.33.0
+    # - name: Setup SDE binaries (linux or windows)
+    #   if: ${{ matrix.os == 'ubuntu-latest' || matrix.os == 'windows-latest' }}
+    #   uses: petarpetrovt/setup-sde@v3.0
+    #   with:
+    #     environmentVariableName: SDE_PATH # default value is `SDE_PATH`
+    #     sdeVersion: 9.58.0 # possible values: 9.58.0 (default), 9.33.0
 
     # - name: Get QBDI (linux)
     #   if: ${{ matrix.os == 'ubuntu-latest' }}
@@ -49,10 +49,18 @@ jobs:
         # curl https://github.com/QBDI/QBDI/releases/download/v0.12.0/QBDI-0.12.0-osx-AARCH64.pkg -L > QBDI.pkg
         # sudo installer -pkg QBDI.pkg -target ~
 
-        cargo run -- install-qbdi
+        sudo cargo run -- install-qbdi
+
+        ls
 
         bash build-qbdi.sh
         mv 'qbdi/build/${{ matrix.dynamic-library }}' .
+
+    - name: Get SDE
+      if: ${{ matrix.os == 'ubuntu-latest' || matrix.os == 'windows-latest' }}
+      run: | 
+        sudo cargo run -- install-sde
+        ls
     
     # - name: Get QBDI (windows)
     #   if: ${{ matrix.os == 'windows-latest' }}

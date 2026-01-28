@@ -13,8 +13,16 @@ pub fn run_sde(
     let blocks = 50;
 
     {
-        let sde_path = std::env::var("SDE_PATH").map(|dir| format!("{dir}/sde"));
-        let sde_path = sde_path.as_deref().unwrap_or("sde");
+        let sde_path = if let Some(path) = crate::adjacent_sde_path()
+            && let Ok(true) = std::fs::exists(&path)
+        {
+            dbg!(&path);
+            path
+        } else if let Ok(dir) = std::env::var("SDE_PATH") {
+            format!("{dir}/sde")
+        } else {
+            String::from("sde")
+        };
 
         let mut command = Command::new(sde_path);
         command.args([
