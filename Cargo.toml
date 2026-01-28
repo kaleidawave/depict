@@ -9,7 +9,7 @@ name = "depict"
 path = "src/main.rs"
 
 [dependencies]
-json-builder-macro = "0.0.3"
+json-builder-macro = "=0.0.3"
 rustc-demangle = "0.1.26"
 
 # TODO only on x86 ?

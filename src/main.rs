@@ -28,7 +28,7 @@ fn main() {
     }
 
     match tool {
-        "--info" | "help" => {
+        "--info" | "--help" | "help" => {
             println!("depict");
             println!("run 'qbdi', 'sde', 'perf-events' or 'time'");
         }
@@ -87,6 +87,31 @@ fn main() {
         #[cfg(target_family = "unix")]
         "perf-events" => {
             todo!()
+        }
+        #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
+        "install-qbdi" => {
+            use std::process::Command;
+
+            let file = "qbdi.pkg";
+
+            Command::new("curl")
+                .arg("https://github.com/QBDI/QBDI/releases/download/v0.12.0/QBDI-0.12.0-osx-AARCH64.pkg")
+                .arg("-L")
+                .arg("-o")
+                .arg(file)
+                .output()
+                .unwrap();
+
+            Command::new("sudo")
+                .arg("installer")
+                .arg("-pkg")
+                .arg(file)
+                .arg("-target")
+                .arg("~")
+                .output()
+                .unwrap();
+
+            std::fs::remove_file(file).unwrap();
         }
         tool => {
             println!("unknown tool {tool:?}. run with 'qbdi', 'sde', 'perf-events' or 'time'");
@@ -336,6 +361,9 @@ pub fn print_results(
         }
         OutputFormat::JSON => {
             let mut buf = String::from("[");
+            buf.push_str(&json_builder_macro::json! {
+                total: total_count as u64,
+            });
             for row in rows {
                 if buf.len() > 1 {
                     buf.push(',');
@@ -358,6 +386,7 @@ pub fn print_results(
         }
         OutputFormat::CSV => {
             writeln!(to, "symbol name,count")?;
+            writeln!(to, "total,{total_count}")?;
             for row in rows {
                 let Entry {
                     symbol_name, total, ..
@@ -379,6 +408,7 @@ pub fn print_results(
         OutputFormat::Markdown => {
             writeln!(to, "|symbol name|count|")?;
             writeln!(to, "|---|---|")?;
+            writeln!(to, "|total|{total_count}|")?;
             for row in rows {
                 let Entry {
                     symbol_name, total, ..
