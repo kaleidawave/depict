@@ -59,7 +59,7 @@ jobs:
     - name: Get SDE
       if: ${{ matrix.os == 'ubuntu-latest' }}
       run: | 
-        cargo run -- install-sde
+        cargo run -- install-sde || file sde-temp-file.tar.bz2
         ls
 
     - name: Get SDE

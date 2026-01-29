@@ -110,8 +110,8 @@ fn main() {
                 .arg("installer")
                 .arg("-pkg")
                 .arg(file)
-                // .arg("-target")
-                // .arg("~")
+                .arg("-target")
+                .arg(std::env::home_dir().unwrap())
                 .stdout(Stdio::inherit())
                 .stderr(Stdio::inherit())
                 .spawn()
@@ -121,7 +121,7 @@ fn main() {
 
             std::fs::remove_file(file).unwrap();
         }
-        #[cfg(all(target_os = "linux"))]
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
         "install-sde" => {
             // Based on https://github.com/petarpetrovt/setup-sde/blob/main/index.ts
 
