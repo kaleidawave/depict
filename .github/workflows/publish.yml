@@ -57,9 +57,15 @@ jobs:
         mv 'qbdi/build/${{ matrix.dynamic-library }}' .
 
     - name: Get SDE
-      if: ${{ matrix.os == 'ubuntu-latest' || matrix.os == 'windows-latest' }}
+      if: ${{ matrix.os == 'ubuntu-latest' }}
       run: | 
-        sudo cargo run -- install-sde
+        cargo run -- install-sde
+        ls
+
+    - name: Get SDE
+      if: ${{ matrix.os == 'windows-latest' }}
+      run: | 
+        cargo run -- install-sde
         ls
     
     # - name: Get QBDI (windows)
