@@ -46,24 +46,32 @@ pub fn run_sde(
 
     let out = BufReader::new(file);
 
-    let rows = sde_output_parser::parse(out, options.skip_internals);
+    // TODO want options.merge_internals, not skip internals
+    let rows = sde_output_parser::parse(out, false);
 
     let symbols: Vec<_> = rows
         .into_iter()
         .map(|(symbol_name, item)| crate::Entry {
             symbol_name,
-            total: item.total,
-            entries: vec![
-                ("mem_read".to_owned(), item.mem_read),
-                ("mem_write".to_owned(), item.mem_write),
-                ("stack_read".to_owned(), item.stack_read),
-                ("stack_write".to_owned(), item.stack_write),
-                ("call".to_owned(), item.call),
-            ],
+            statistics: crate::Statistics {
+                total: item.total,
+                mem_read: item.mem_read,
+                mem_write: item.mem_write,
+                stack_read: item.stack_read,
+                stack_write: item.stack_write,
+                call: item.call,
+                others: Default::default(),
+            },
         })
         .collect();
 
-    let total = symbols.iter().fold(0, |acc, row| acc + row.total);
+    let total: crate::Statistics =
+        symbols
+            .iter()
+            .fold(crate::Statistics::default(), |mut acc, row| {
+                acc += row.statistics.clone();
+                acc
+            });
 
     if options.keep.is_none() {
         std::fs::remove_file(file_path).unwrap();

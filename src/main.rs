@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::ffi::OsString;
 use std::io::Write;
 
-use depict::{CommandRequest, Entry, ToolOptions, ToolOutput, tools, utilities};
+use depict::{CommandRequest, Entry, Statistics, ToolOptions, ToolOutput, tools, utilities};
 use utilities::{Direction, PairedWriter, Sorting};
 
 fn main() {
@@ -39,14 +39,14 @@ fn main() {
             };
             let options = ToolOptions {
                 keep: input.keep,
-                skip_internals: input.skip_internals,
+                merge_internals: input.merge_internals,
             };
             let result = tools::qbdi::run_qbdi(request, &options).unwrap();
             match result {
                 ToolOutput::SymbolInstructionCounts { symbols, total } => print_results(
                     &mut writer.expect("--quiet must have --write-results-to"),
                     symbols,
-                    total as usize,
+                    total,
                     input.format,
                     input.sort,
                     input.limit,
@@ -67,14 +67,14 @@ fn main() {
             };
             let options = ToolOptions {
                 keep: input.keep,
-                skip_internals: input.skip_internals,
+                merge_internals: input.merge_internals,
             };
             let result = tools::sde::run_sde(request, &options).unwrap();
             match result {
                 ToolOutput::SymbolInstructionCounts { symbols, total } => print_results(
                     &mut writer.expect("--quiet must have --write-results-to"),
                     symbols,
-                    total as usize,
+                    total,
                     input.format,
                     input.sort,
                     input.limit,
@@ -200,7 +200,7 @@ pub struct BenchmarkInput {
     /// Save SDE file...
     pub keep: Option<String>,
     /// skip Rust internals
-    pub skip_internals: bool,
+    pub merge_internals: bool,
     /// include all instruction kinds
     pub breakdown: bool,
     // things
@@ -212,7 +212,10 @@ impl BenchmarkInput {
     pub fn from_arguments(mut args: impl Iterator<Item = String>) -> Self {
         let mut this = Self {
             limit: usize::MAX,
-            sort: None,
+            sort: Some(Sorting {
+                field: "total".into(),
+                direction: Direction::Ascending,
+            }),
             format: OutputFormat::default(),
             // ...
             program: OsString::new(),
@@ -221,7 +224,7 @@ impl BenchmarkInput {
             generic_arguments: HashMap::new(),
             // ...
             keep: None,
-            skip_internals: true,
+            merge_internals: false,
             breakdown: false,
             // ...
             write_results_to: None,
@@ -273,8 +276,8 @@ impl BenchmarkInput {
                 "--write-results-to" => {
                     this.write_results_to = args.next();
                 }
-                "--all" => {
-                    this.skip_internals = false;
+                "--merge-internals" => {
+                    this.merge_internals = true;
                 }
                 "--breakdown" => {
                     this.breakdown = true;
@@ -313,7 +316,7 @@ impl BenchmarkInput {
 pub fn print_results(
     to: &mut impl Write,
     mut rows: Vec<Entry>,
-    total_count: usize,
+    total: Statistics,
     output_format: OutputFormat,
     sorting: Option<utilities::Sorting>,
     limit: usize,
@@ -337,7 +340,10 @@ pub fn print_results(
                 });
             }
             "total" => {
-                rows.sort_unstable_by(|lhs, rhs| sort.direction.compare(&lhs.total, &rhs.total));
+                rows.sort_unstable_by(|lhs, rhs| {
+                    sort.direction
+                        .compare(&lhs.statistics.total, &rhs.statistics.total)
+                });
             }
             field => {
                 writeln!(to, "error: unknown field {field:?}")?;
@@ -354,6 +360,14 @@ pub fn print_results(
     } else {
         0
     };
+
+    rows.insert(
+        0,
+        Entry {
+            symbol_name: "Total".into(),
+            statistics: total,
+        },
+    );
 
     let rows = &rows[skip..];
     let rows = &rows[..std::cmp::min(rows.len(), limit)];
@@ -378,11 +392,6 @@ pub fn print_results(
             //     println!();
             // }
 
-            writeln!(
-                to,
-                "Run {total} instructions",
-                total = count_with_seperator(total_count)
-            )?;
             for row in rows {
                 let symbol_name: Cow<'_, str> = if row.symbol_name.len() > MAX_WIDTH {
                     Cow::Owned(format!(
@@ -397,17 +406,27 @@ pub fn print_results(
                 write!(to, "{symbol_name}{fill}")?;
                 write!(
                     to,
-                    " total:  {count}",
-                    count = count_with_seperator(row.total as usize)
+                    " total: {count}",
+                    count = count_with_seperator(row.statistics.total as usize)
                 )?;
                 if breakdown {
-                    for (name, count) in &row.entries {
-                        write!(
-                            to,
-                            " {name}:  {count}",
-                            count = count_with_seperator(*count as usize)
-                        )?;
-                    }
+                    write!(
+                        to,
+                        " mem_read: {mem_read}, mem_write: {mem_write}, stack_read: {stack_read}, stack_write: {stack_write}, call {call}",
+                        mem_read = count_with_seperator(row.statistics.mem_read as usize),
+                        mem_write = count_with_seperator(row.statistics.mem_write as usize),
+                        stack_read = count_with_seperator(row.statistics.stack_read as usize),
+                        stack_write = count_with_seperator(row.statistics.stack_write as usize),
+                        call = count_with_seperator(row.statistics.call as usize)
+                    )?;
+                    // TODO
+                    // for (name, count) in &row.statistics.others {
+                    //     write!(
+                    //         to,
+                    //         " {name}: {count}",
+                    //         count = count_with_seperator(*count as usize)
+                    //     )?;
+                    // }
                 }
                 writeln!(to)?;
             }
@@ -416,9 +435,6 @@ pub fn print_results(
         }
         OutputFormat::JSON => {
             let mut buf = String::from("[");
-            buf.push_str(&json_builder_macro::json! {
-                total: total_count as u64,
-            });
             for row in rows {
                 if buf.len() > 1 {
                     buf.push(',');
@@ -426,13 +442,18 @@ pub fn print_results(
                 if breakdown {
                     buf.push_str(&json_builder_macro::json! {
                         symbol_name: row.symbol_name.as_str(),
-                        total: row.total,
-                        kinds: row.entries
+                        total: row.statistics.total,
+                        mem_read: row.statistics.mem_read,
+                        mem_write: row.statistics.mem_write,
+                        stack_read: row.statistics.stack_read,
+                        stack_write: row.statistics.stack_write,
+                        call: row.statistics.call,
+                        kinds: row.statistics.others
                     });
                 } else {
                     buf.push_str(&json_builder_macro::json! {
                         symbol_name: row.symbol_name.as_str(),
-                        total: row.total
+                        total: row.statistics.total
                     });
                 }
             }
@@ -440,45 +461,88 @@ pub fn print_results(
             write!(to, "{buf}")
         }
         OutputFormat::CSV => {
-            writeln!(to, "symbol name,count")?;
-            writeln!(to, "total,{total_count}")?;
+            if breakdown {
+                writeln!(
+                    to,
+                    "symbol name,count,mem_read,mem_write,stack_read,stack_write,call"
+                )?;
+            } else {
+                writeln!(to, "symbol name,count")?;
+            }
             for row in rows {
                 let Entry {
-                    symbol_name, total, ..
+                    symbol_name,
+                    statistics,
                 } = row;
-                writeln!(to, "\"{symbol_name}\",{total}")?;
-                // TODO ..?
-                // if breakdown {
-                //     for (name, count) in &row.entries {
-                //         write!(
-                //             to,
-                //             ",\"{name}\",{count}",
-                //             count = *count as usize
-                //         )?;
-                //     }
-                // }
+                if breakdown {
+                    let Statistics {
+                        total,
+                        mem_read,
+                        mem_write,
+                        stack_read,
+                        stack_write,
+                        call,
+                        others: _,
+                    } = statistics;
+                    writeln!(
+                        to,
+                        "`{symbol_name}`,{total},{mem_read},{mem_write},{stack_read},{stack_write},{call}"
+                    )?;
+                    // TODO ..?
+                    // for (name, count) in &row.others {
+                    //     write!(
+                    //         to,
+                    //         ",\"{name}\",{count}",
+                    //         count = *count as usize
+                    //     )?;
+                    // }
+                } else {
+                    writeln!(to, "|`{symbol_name}`|{total}|", total = statistics.total)?;
+                }
             }
             Ok(())
         }
         OutputFormat::Markdown => {
-            writeln!(to, "|symbol name|count|")?;
-            writeln!(to, "|---|---|")?;
-            writeln!(to, "|total|{total_count}|")?;
+            if breakdown {
+                writeln!(
+                    to,
+                    "|symbol name|count|mem_read|mem_write|stack_read|stack_write|call|other|"
+                )?;
+                writeln!(to, "|---|---|---|---|---|---|---|")?;
+            } else {
+                writeln!(to, "|symbol name|count|")?;
+                writeln!(to, "|---|---|")?;
+            }
             for row in rows {
                 let Entry {
-                    symbol_name, total, ..
+                    symbol_name,
+                    statistics,
                 } = row;
-                writeln!(to, "|`{symbol_name}`|{total}|")?;
-                // TODO ..?
-                // if breakdown {
-                //     for (name, count) in &row.entries {
-                //         write!(
-                //             to,
-                //             ",\"{name}\",{count}",
-                //             count = *count as usize
-                //         )?;
-                //     }
-                // }
+                if breakdown {
+                    let Statistics {
+                        total,
+                        mem_read,
+                        mem_write,
+                        stack_read,
+                        stack_write,
+                        call,
+                        others: _,
+                    } = statistics;
+                    writeln!(
+                        to,
+                        "|`{symbol_name}`|{total}|{mem_read}|{mem_write}|{stack_read}|{stack_write}|{call}|"
+                    )?;
+                    // TODO ..?
+                    // for (name, count) in &row.others {
+                    //     write!(
+                    //         to,
+                    //         "|\"{name}\"|{count}",
+                    //         count = *count as usize
+                    //     )?;
+                    // }
+                } else {
+                    writeln!(to, "|`{symbol_name}`|{total}|", total = statistics.total)?;
+                }
             }
             Ok(())
         }

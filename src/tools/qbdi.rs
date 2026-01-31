@@ -1,4 +1,4 @@
-use crate::Entry;
+use crate::{Entry, Statistics};
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
@@ -7,7 +7,12 @@ use std::process::{Command, Stdio};
 #[derive(Default)]
 struct Item {
     total: u32,
-    instruction_kind: Vec<(String, u32)>,
+    mem_read: u32,
+    mem_write: u32,
+    stack_read: u32,
+    stack_write: u32,
+    call: u32,
+    others: HashMap<String, u32>,
 }
 
 pub fn run_qbdi(
@@ -93,44 +98,76 @@ pub fn run_qbdi(
 
     let content = BufReader::new(child.stdout.take().unwrap());
 
+    let mut internal: Statistics = Statistics::default();
+    let mut total: Statistics = Statistics::default();
+
     // TODO this seems highly inefficient
     let mut items: HashMap<String, Item> = HashMap::new();
 
-    let mut total = 0;
     for line in content.lines() {
         let line = line.unwrap();
 
         #[cfg(target_os = "linux")]
         eprintln!("TEMP linux: {line}");
 
-        if let Some(rest) = line.strip_prefix("bm::") {
+        if let Some(rest) = line.strip_prefix("depict_qbdi::") {
             let Some((func, rest)) = rest.split_once('/') else {
                 // TODO not sure why some items do not finish?
                 continue;
             };
 
-            let (kind, count) = rest.split_once('/').unwrap();
+            let Some((kind, count)) = rest.split_once('/') else {
+                dbg!(rest);
+                continue;
+            };
             let Ok(count) = count.parse() else {
                 // TODO ...?
+                dbg!(kind, count, rest);
                 continue;
             };
 
-            total += count;
-
             let func = format!("{func:#}", func = rustc_demangle::demangle(func));
 
-            if options.skip_internals {
-                let bad_prefixes = &["std::", "core::", "alloc::", "_", "*", "OUTLINED_FUNCTION_"];
+            if options.merge_internals {
+                let bad_prefixes = &[
+                    "std::",
+                    "core::",
+                    "alloc::",
+                    "_",
+                    "*",
+                    "OUTLINED_FUNCTION_",
+                    "<std::",
+                ];
                 let skip = bad_prefixes.iter().any(|prefix| func.starts_with(prefix));
                 if skip {
+                    internal.total += count;
                     continue;
                 }
             }
 
             let item = items.entry(func).or_default();
 
+            total.total += count;
             item.total += count;
-            item.instruction_kind.push((kind.to_owned(), count));
+
+            match kind {
+                "mem_read" => {
+                    item.mem_read = count;
+                    total.mem_read += count;
+                }
+                "mem_write" => {
+                    item.mem_write = count;
+                    total.mem_write += count;
+                }
+                "call" => {
+                    item.call = count;
+                    total.call += count;
+                }
+                kind => {
+                    item.others.insert(kind.to_owned(), count);
+                    total.add_other(kind.to_owned(), count);
+                }
+            }
         } else {
             println!("{line}");
         }
@@ -142,8 +179,15 @@ pub fn run_qbdi(
         .into_iter()
         .map(|(name, item)| Entry {
             symbol_name: name,
-            total: item.total,
-            entries: item.instruction_kind,
+            statistics: Statistics {
+                total: item.total,
+                mem_read: item.mem_read,
+                mem_write: item.mem_write,
+                stack_read: item.stack_read,
+                stack_write: item.stack_write,
+                call: item.call,
+                others: item.others,
+            },
         })
         .collect();
 
