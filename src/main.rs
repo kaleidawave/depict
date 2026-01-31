@@ -111,7 +111,7 @@ fn main() {
                 .arg("-pkg")
                 .arg(file)
                 .arg("-target")
-                .arg(std::env::home_dir().unwrap())
+                .arg(std::env::home_dir().unwrap().join("qbdi-out"))
                 .stdout(Stdio::inherit())
                 .stderr(Stdio::inherit())
                 .spawn()
@@ -127,21 +127,19 @@ fn main() {
 
             use std::process::{Command, Stdio};
 
-            /* function getPlatformIdentifier(): string {
-                switch (process.platform) {
-                    case "win32": return `win`;
-                    case "darwin": return `mac`;
-                    case "linux": return `lin`;
-                    default: throw new Error(`Platform '${process.platform}' is not supported in this context.`);
-                }
-            }*/
-
             let base = "https://downloadmirror.intel.com";
-            let platform = "lin";
+
+            #[cfg(target_os = "linux")]
+            let (platform, extension) = ("lin", "");
+
+            #[cfg(target_os = "macos")]
+            let (platform, extension) = ("mac", "");
+
+            #[cfg(target_os = "windows")]
+            let (platform, extension) = ("win", ".exe");
 
             let url = format!("{base}/859732/sde-external-9.58.0-2025-06-16-{platform}.tar.xz");
-
-            let file = "sde-temp-file.tar.bz2";
+            let file = "sde-temp-file.tar.xz";
 
             Command::new("curl")
                 .arg(url)
@@ -154,7 +152,9 @@ fn main() {
                 .wait()
                 .unwrap();
 
+            // exec.exec(`"${tarExePath}"`, [`x`, `--force-local`, `-C`, `${extractedFilesPath}`, `-f`, `${tarFilePath}`]);
             Command::new("tar")
+                // -x extract, -v verbose, -j archive with gzip/bzip2/xz/lzma, -f pass filename
                 .arg("-xvjf")
                 .arg(file)
                 .stdout(Stdio::inherit())
@@ -165,8 +165,8 @@ fn main() {
                 .unwrap();
 
             let dest = depict::adjacent_sde_path().unwrap();
-            std::fs::rename("sde-external-9.58.0-2025-06-16-lin/sde", dest).unwrap();
-            // exec.exec(`"${tarExePath}"`, [`x`, `--force-local`, `-C`, `${extractedFilesPath}`, `-f`, `${tarFilePath}`]);
+            let target = format!("sde-external-9.58.0-2025-06-16-{platform}/sde{extension}");
+            std::fs::rename(target, dest).unwrap();
         }
         tool => {
             println!("unknown tool {tool:?}. run with 'qbdi', 'sde', 'perf-events' or 'time'");

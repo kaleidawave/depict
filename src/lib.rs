@@ -30,6 +30,17 @@ pub struct Entry {
     pub entries: Vec<(String, u32)>,
 }
 
+#[cfg(target_os = "windows")]
+pub fn adjacent_sde_path() -> Option<String> {
+    let path = std::env::current_exe().ok()?;
+    path.parent()?
+        .join("sde")
+        .with_extension("exe")
+        .to_str()
+        .map(str::to_owned)
+}
+
+#[cfg(unix)]
 pub fn adjacent_sde_path() -> Option<String> {
     let path = std::env::current_exe().ok()?;
     path.parent()?.join("sde").to_str().map(str::to_owned)
