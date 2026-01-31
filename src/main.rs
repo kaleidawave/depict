@@ -107,7 +107,7 @@ fn main() {
                 .unwrap();
 
             let dest = std::env::home_dir().unwrap().join("qbdi-out");
-            std::fs::create_dir_all(dest)?;
+            std::fs::create_dir_all(&dest).unwrap();
 
             Command::new("sudo")
                 .arg("installer")
