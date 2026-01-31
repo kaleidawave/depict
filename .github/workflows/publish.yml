@@ -51,10 +51,8 @@ jobs:
 
         sudo cargo run -- install-qbdi
 
-        ls
-
         bash build-qbdi.sh
-        mv 'qbdi/build/${{ matrix.dynamic-library }}' .
+        mv 'qbdi/build/${{ matrix.dynamic-library }}' target/debug
 
     - name: Get SDE
       if: ${{ matrix.os == 'ubuntu-latest' }}

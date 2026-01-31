@@ -157,14 +157,12 @@ fn main() {
 
             // exec.exec(`"${tarExePath}"`, [`x`, `--force-local`, `-C`, `${extractedFilesPath}`, `-f`, `${tarFilePath}`]);
 
-            dbg!(file);
-
             Command::new("tar")
                 // -x extract, -v verbose, -j archive with gzip/bzip2/xz/lzma, -f pass filename
                 .arg("-xvf") // -xvjf
                 .arg(file)
-                .stdout(Stdio::inherit())
-                .stderr(Stdio::inherit())
+                // .stdout(Stdio::inherit())
+                // .stderr(Stdio::inherit())
                 .spawn()
                 .unwrap()
                 .wait()

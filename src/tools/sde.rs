@@ -28,6 +28,8 @@ pub fn run_sde(
             command.args(["-help"]);
             command.stdout(Stdio::piped());
             command.stderr(Stdio::piped());
+            let mut child = command.spawn().expect("could not spawn SDE (or it failed)");
+            let _ = child.wait().unwrap();
         }
 
         let mut command = Command::new(sde_path);
@@ -48,7 +50,7 @@ pub fn run_sde(
         let _ = child.wait().unwrap();
     }
 
-    let file = std::fs::File::open(file_path).expect("sde did no create file");
+    let file = std::fs::File::open(file_path).expect("sde did not create file");
 
     let out = BufReader::new(file);
 
