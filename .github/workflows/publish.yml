@@ -59,7 +59,7 @@ jobs:
     - name: Get SDE
       if: ${{ matrix.os == 'ubuntu-latest' }}
       run: | 
-        cargo run -- install-sde || file sde-temp-file.tar.bz2
+        cargo run -- install-sde || file sde-temp-file.tar.xz
         ls
 
     - name: Get SDE
@@ -74,10 +74,6 @@ jobs:
     #     curl https://github.com/QBDI/QBDI/releases/download/v0.12.0/QBDI-0.12.0-windows-X86_64.exe -L > QBDI.exe
     #     runas /user:Administrator "./QBDI.exe"
     #     ls 'C:\Program Files'
-        
-    - name: Build example binary
-      shell: bash
-      run: cargo build && mv target/debug/depict${{ matrix.executable-extension }} .
 
     - name: Build iterations
       shell: bash
@@ -99,7 +95,7 @@ jobs:
         do
           i=$((10**i))
           echo "::group::./depict${{ matrix.executable-extension }} qbdi ./iterations${{ matrix.executable-extension }} $i"
-          sudo ./depict${{ matrix.executable-extension }} qbdi --sort name ./iterations${{ matrix.executable-extension }} $i
+          sudo ./target/debug/depict${{ matrix.executable-extension }} qbdi --sort name ./iterations${{ matrix.executable-extension }} $i
           echo "::endgroup::"
         done
 
@@ -112,7 +108,7 @@ jobs:
           i=$((10**i))
 
           echo "::group::./depict${{ matrix.executable-extension }} sde ./iterations${{ matrix.executable-extension }} $i"
-          ./depict${{ matrix.executable-extension }} sde --sort name ./iterations${{ matrix.executable-extension }} $i
+          ./target/debug/depict${{ matrix.executable-extension }} sde --sort name ./iterations${{ matrix.executable-extension }} $i
           echo "::endgroup::"
         done
 

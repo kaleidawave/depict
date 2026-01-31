@@ -106,12 +106,15 @@ fn main() {
                 .wait()
                 .unwrap();
 
+            let dest = std::env::home_dir().unwrap().join("qbdi-out");
+            std::fs::create_dir_all(dest)?;
+
             Command::new("sudo")
                 .arg("installer")
                 .arg("-pkg")
                 .arg(file)
                 .arg("-target")
-                .arg(std::env::home_dir().unwrap().join("qbdi-out"))
+                .arg(dest)
                 .stdout(Stdio::inherit())
                 .stderr(Stdio::inherit())
                 .spawn()
@@ -153,9 +156,12 @@ fn main() {
                 .unwrap();
 
             // exec.exec(`"${tarExePath}"`, [`x`, `--force-local`, `-C`, `${extractedFilesPath}`, `-f`, `${tarFilePath}`]);
+
+            dbg!(file);
+
             Command::new("tar")
                 // -x extract, -v verbose, -j archive with gzip/bzip2/xz/lzma, -f pass filename
-                .arg("-xvjf")
+                .arg("-xvf") // -xvjf
                 .arg(file)
                 .stdout(Stdio::inherit())
                 .stderr(Stdio::inherit())
