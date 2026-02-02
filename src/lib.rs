@@ -4,6 +4,7 @@ pub mod utilities;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ffi::OsStr;
+use std::path::PathBuf;
 
 pub struct CommandRequest<'a> {
     pub program: Cow<'a, OsStr>,
@@ -80,17 +81,13 @@ impl Statistics {
 }
 
 #[cfg(target_os = "windows")]
-pub fn adjacent_sde_path() -> Option<String> {
+pub fn adjacent_sde_path() -> Option<PathBuf> {
     let path = std::env::current_exe().ok()?;
-    path.parent()?
-        .join("sde")
-        .with_extension("exe")
-        .to_str()
-        .map(str::to_owned)
+    Some(path.parent()?.join("sde").join("sde").with_extension("exe"))
 }
 
 #[cfg(unix)]
-pub fn adjacent_sde_path() -> Option<String> {
+pub fn adjacent_sde_path() -> Option<PathBuf> {
     let path = std::env::current_exe().ok()?;
-    path.parent()?.join("sde").to_str().map(str::to_owned)
+    Some(path.parent()?.join("sde").join("sde"))
 }

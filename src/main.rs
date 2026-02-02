@@ -133,13 +133,13 @@ fn main() {
             let base = "https://downloadmirror.intel.com";
 
             #[cfg(target_os = "linux")]
-            let (platform, extension) = ("lin", "");
+            let platform = "lin";
 
             #[cfg(target_os = "macos")]
-            let (platform, extension) = ("mac", "");
+            let platform = "mac";
 
             #[cfg(target_os = "windows")]
-            let (platform, extension) = ("win", ".exe");
+            let platform = "win";
 
             let url = format!("{base}/859732/sde-external-9.58.0-2025-06-16-{platform}.tar.xz");
             let file = "sde-temp-file.tar.xz";
@@ -168,8 +168,9 @@ fn main() {
                 .wait()
                 .unwrap();
 
-            let dest = depict::adjacent_sde_path().unwrap();
-            let target = format!("sde-external-9.58.0-2025-06-16-{platform}/sde{extension}");
+            let bin_dest = depict::adjacent_sde_path().unwrap();
+            let dest = bin_dest.parent().unwrap();
+            let target = format!("sde-external-9.58.0-2025-06-16-{platform}");
             std::fs::rename(target, dest).unwrap();
         }
         tool => {

@@ -16,21 +16,12 @@ pub fn run_sde(
         let sde_path = if let Some(path) = crate::adjacent_sde_path()
             && let Ok(true) = std::fs::exists(&path)
         {
-            path
+            path.into_os_string().into_string().unwrap()
         } else if let Ok(dir) = std::env::var("SDE_PATH") {
             format!("{dir}/sde")
         } else {
             String::from("sde")
         };
-
-        {
-            let mut command = Command::new(&sde_path);
-            command.args(["-help"]);
-            command.stdout(Stdio::piped());
-            command.stderr(Stdio::piped());
-            let mut child = command.spawn().expect("could not spawn SDE (or it failed)");
-            let _ = child.wait().unwrap();
-        }
 
         let mut command = Command::new(sde_path);
         command.args([
@@ -43,11 +34,12 @@ pub fn run_sde(
         ]);
         command.arg(request.program);
         command.args(request.arguments);
-        command.stdout(Stdio::piped());
-        command.stderr(Stdio::piped());
+        command.stdout(Stdio::inherit());
+        command.stderr(Stdio::inherit());
 
-        let mut child = command.spawn().expect("could not spawn SDE (or it failed)");
-        let _ = child.wait().unwrap();
+        let child = command.spawn().expect("could not spawn SDE (or it failed)");
+        let _ = child.wait_with_output().unwrap();
+        // TODO assert ok?
     }
 
     let file = std::fs::File::open(file_path).expect("sde did not create file");

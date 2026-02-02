@@ -55,16 +55,8 @@ jobs:
         mv 'qbdi/build/${{ matrix.dynamic-library }}' target/debug
 
     - name: Get SDE
-      if: ${{ matrix.os == 'ubuntu-latest' }}
-      run: | 
-        cargo run -- install-sde || file sde-temp-file.tar.xz
-        ls
-
-    - name: Get SDE
-      if: ${{ matrix.os == 'windows-latest' }}
-      run: | 
-        cargo run -- install-sde
-        ls
+      if: ${{ matrix.os == 'ubuntu-latest' || matrix.os == 'windows-latest' }}
+      run: cargo run -- install-sde
     
     # - name: Get QBDI (windows)
     #   if: ${{ matrix.os == 'windows-latest' }}
@@ -72,10 +64,6 @@ jobs:
     #     curl https://github.com/QBDI/QBDI/releases/download/v0.12.0/QBDI-0.12.0-windows-X86_64.exe -L > QBDI.exe
     #     runas /user:Administrator "./QBDI.exe"
     #     ls 'C:\Program Files'
-
-    - name: Build iterations
-      shell: bash
-      run: cargo build --example iterations && mv target/debug/examples/iterations${{ matrix.executable-extension }} .
 
     # - name: Investigate QBDI (linux)
     #   if: ${{ matrix.os == 'ubuntu-latest' }}
@@ -85,7 +73,11 @@ jobs:
     #     echo "---"
     #     sudo LD_BIND_NOW=1 LD_PRELOAD="$(realpath ${{ matrix.dynamic-library }})" ./iterations 10
 
-    - name: Run QBDI iterations
+    - name: Build iterations
+      shell: bash
+      run: cargo build --example iterations && mv target/debug/examples/iterations${{ matrix.executable-extension }} .
+
+    - name: Run iterations (QBDI)
       if: ${{ matrix.os == 'macos-latest' }}
       shell: bash
       run: |
@@ -93,20 +85,19 @@ jobs:
         do
           i=$((10**i))
           echo "::group::./depict${{ matrix.executable-extension }} qbdi ./iterations${{ matrix.executable-extension }} $i"
-          sudo ./target/debug/depict${{ matrix.executable-extension }} qbdi --sort name ./iterations${{ matrix.executable-extension }} $i
+          sudo ./target/debug/depict${{ matrix.executable-extension }} qbdi ./iterations${{ matrix.executable-extension }} $i
           echo "::endgroup::"
         done
 
-    - name: Run SDE (linux or windows)
+    - name: Run interations (SDE) (linux or windows)
       if: ${{ matrix.os == 'ubuntu-latest' || matrix.os == 'windows-latest' }}
       shell: bash
       run: |
         for i in {0..3}
         do
           i=$((10**i))
-
           echo "::group::./depict${{ matrix.executable-extension }} sde ./iterations${{ matrix.executable-extension }} $i"
-          ./target/debug/depict${{ matrix.executable-extension }} sde --sort name ./iterations${{ matrix.executable-extension }} $i
+          ./target/debug/depict${{ matrix.executable-extension }} sde ./iterations${{ matrix.executable-extension }} $i
           echo "::endgroup::"
         done
 
