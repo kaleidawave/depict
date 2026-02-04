@@ -19,6 +19,8 @@ jobs:
           # dynamic-library: libqbdi_tracer.dll
           executable-extension: '.exe'
 
+    timeout-minutes: 3
+
     steps:
     - uses: actions/checkout@v4
     - uses: dtolnay/rust-toolchain@stable
