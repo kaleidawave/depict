@@ -57,10 +57,10 @@ jobs:
         # curl https://github.com/QBDI/QBDI/releases/download/v0.12.0/QBDI-0.12.0-osx-AARCH64.pkg -L > QBDI.pkg
         # sudo installer -pkg QBDI.pkg -target ~
 
-        sudo ./depict -- install-qbdi
+        ./depict install
 
         bash build-qbdi.sh
-        mv 'qbdi/build/${{ matrix.dynamic-library }}' target/release-with-debug
+        mv 'qbdi/build/${{ matrix.dynamic-library }}' .
 
     - name: Get SDE
       if: ${{ matrix.os == 'ubuntu-latest' || matrix.os == 'windows-latest' }}
