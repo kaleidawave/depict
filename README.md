@@ -14,6 +14,12 @@ Modes:
 
 ## Required dependencies
 
+You can quickly install required dependencies for instruction counting with
+
+```shell
+depict install
+```
+
 ### QBDI
 
 The tool is compiled. Not sure whether QBDI is required is needed but you can get it on macos here.
@@ -46,6 +52,15 @@ You can get it on GitHub actions with the following.
     environmentVariableName: SDE_PATH # default value is `SDE_PATH`
     sdeVersion: 9.58.0 # possible values: 9.58.0 (default), 9.33.0
 ```
+
+## Notes
+
+- MacOs and Linux Rust builds get debug information. **Windows** release builds needs
+  ```toml
+  [profile.release-with-debug]
+  inherits = "release"
+  debug = true
+  ```
 
 ## TODO
 

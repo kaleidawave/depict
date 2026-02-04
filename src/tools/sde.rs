@@ -10,10 +10,10 @@ pub fn run_sde(
     let file_path: &str = options.keep.as_deref().unwrap_or(TEMP_FILE);
 
     // TODO hmm
-    let blocks = 50;
+    let blocks = 30;
 
     {
-        let sde_path = if let Some(path) = crate::adjacent_sde_path()
+        let sde_path = if let Some(path) = super::adjacent_sde_path()
             && let Ok(true) = std::fs::exists(&path)
         {
             path.into_os_string().into_string().unwrap()
@@ -37,9 +37,21 @@ pub fn run_sde(
         command.stdout(Stdio::inherit());
         command.stderr(Stdio::inherit());
 
-        let child = command.spawn().expect("could not spawn SDE (or it failed)");
-        let _ = child.wait_with_output().unwrap();
-        // TODO assert ok?
+        let mut child = command.spawn().unwrap();
+
+        use wait_timeout::ChildExt;
+
+        let secs = std::time::Duration::from_mins(3);
+        let _status_code = match child.wait_timeout(secs).unwrap() {
+            Some(status) => status.code(),
+            None => {
+                dbg!("sde timed out, killing");
+                child.kill().unwrap();
+                child.wait().unwrap().code()
+            }
+        };
+
+        dbg!(_status_code);
     }
 
     let file = std::fs::File::open(file_path).expect("sde did not create file");

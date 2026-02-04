@@ -32,6 +32,9 @@ fn main() {
             println!("depict");
             println!("run 'qbdi', 'sde', 'perf-events' or 'time'");
         }
+        "time" => {
+            todo!()
+        }
         "qbdi" => {
             let request = CommandRequest {
                 program: input.program.into(),
@@ -55,9 +58,6 @@ fn main() {
                 .unwrap(),
                 _ => todo!(),
             }
-        }
-        "time" => {
-            todo!()
         }
         #[cfg(any(target_arch = "x86", target_arch = "x86_64", debug_assertions))]
         "sde" => {
@@ -84,94 +84,51 @@ fn main() {
                 _ => todo!(),
             }
         }
+        "count" => {
+            let request = CommandRequest {
+                program: input.program.into(),
+                arguments: input.arguments.into_iter().map(Into::into).collect(),
+            };
+            let options = ToolOptions {
+                keep: input.keep,
+                merge_internals: input.merge_internals,
+            };
+            #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
+            let result = tools::qbdi::run_qbdi(request, &options).unwrap();
+
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            let result = tools::qbdi::run_qbdi(request, &options).unwrap();
+            match result {
+                ToolOutput::SymbolInstructionCounts { symbols, total } => print_results(
+                    &mut writer.expect("--quiet must have --write-results-to"),
+                    symbols,
+                    total,
+                    input.format,
+                    input.sort,
+                    input.limit,
+                    input.breakdown,
+                )
+                .unwrap(),
+                _ => todo!(),
+            }
+        }
         #[cfg(target_family = "unix")]
         "perf-events" => {
             todo!()
         }
-        #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
+        "install" => {
+            #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
+            tools::install_qbdi();
+
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            tools::install_sde();
+        }
         "install-qbdi" => {
-            use std::process::{Command, Stdio};
-
-            let file = "qbdi.pkg";
-
-            Command::new("curl")
-                .arg("https://github.com/QBDI/QBDI/releases/download/v0.12.0/QBDI-0.12.0-osx-AARCH64.pkg")
-                .arg("-L")
-                .arg("-o")
-                .arg(file)
-                .stdout(Stdio::inherit())
-                .stderr(Stdio::inherit())
-                .spawn()
-                .unwrap()
-                .wait()
-                .unwrap();
-
-            let dest = std::env::home_dir().unwrap().join("qbdi-out");
-            std::fs::create_dir_all(&dest).unwrap();
-
-            Command::new("sudo")
-                .arg("installer")
-                .arg("-pkg")
-                .arg(file)
-                .arg("-target")
-                .arg(dest)
-                .stdout(Stdio::inherit())
-                .stderr(Stdio::inherit())
-                .spawn()
-                .unwrap()
-                .wait()
-                .unwrap();
-
-            std::fs::remove_file(file).unwrap();
+            tools::install_qbdi();
         }
         #[cfg(any(target_os = "linux", target_os = "windows"))]
         "install-sde" => {
-            // Based on https://github.com/petarpetrovt/setup-sde/blob/main/index.ts
-
-            use std::process::{Command, Stdio};
-
-            let base = "https://downloadmirror.intel.com";
-
-            #[cfg(target_os = "linux")]
-            let platform = "lin";
-
-            #[cfg(target_os = "macos")]
-            let platform = "mac";
-
-            #[cfg(target_os = "windows")]
-            let platform = "win";
-
-            let url = format!("{base}/859732/sde-external-9.58.0-2025-06-16-{platform}.tar.xz");
-            let file = "sde-temp-file.tar.xz";
-
-            Command::new("curl")
-                .arg(url)
-                .arg("-o")
-                .arg(file)
-                .stdout(Stdio::inherit())
-                .stderr(Stdio::inherit())
-                .spawn()
-                .unwrap()
-                .wait()
-                .unwrap();
-
-            // exec.exec(`"${tarExePath}"`, [`x`, `--force-local`, `-C`, `${extractedFilesPath}`, `-f`, `${tarFilePath}`]);
-
-            Command::new("tar")
-                // -x extract, -v verbose, -j archive with gzip/bzip2/xz/lzma, -f pass filename
-                .arg("-xvf") // -xvjf
-                .arg(file)
-                // .stdout(Stdio::inherit())
-                // .stderr(Stdio::inherit())
-                .spawn()
-                .unwrap()
-                .wait()
-                .unwrap();
-
-            let bin_dest = depict::adjacent_sde_path().unwrap();
-            let dest = bin_dest.parent().unwrap();
-            let target = format!("sde-external-9.58.0-2025-06-16-{platform}");
-            std::fs::rename(target, dest).unwrap();
+            tools::install_sde();
         }
         tool => {
             println!("unknown tool {tool:?}. run with 'qbdi', 'sde', 'perf-events' or 'time'");
@@ -244,6 +201,7 @@ impl BenchmarkInput {
                     this.format = match format.as_str() {
                         "plain" => OutputFormat::Plain,
                         "json" => OutputFormat::JSON,
+                        "csv" => OutputFormat::CSV,
                         "markdown" => OutputFormat::Markdown,
                         format => {
                             eprintln!("Unknown output format '{format:?}'");

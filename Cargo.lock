@@ -9,6 +9,7 @@ dependencies = [
  "json-builder-macro",
  "rustc-demangle",
  "sde-output-parser",
+ "wait-timeout",
 ]
 
 [[package]]
@@ -16,6 +17,12 @@ name = "json-builder-macro"
 version = "0.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9aa0a35ce526cad28e8487490a9852c420ab24f130587c96a5cb6ba64d9e038d"
+
+[[package]]
+name = "libc"
+version = "0.2.180"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bcc35a38544a891a5f7c865aca548a982ccb3b8650a5b06d0fd33a10283c56fc"
 
 [[package]]
 name = "rustc-demangle"
@@ -26,3 +33,12 @@ checksum = "56f7d92ca342cea22a06f2121d944b4fd82af56988c270852495420f961d4ace"
 [[package]]
 name = "sde-output-parser"
 version = "0.0.0"
+
+[[package]]
+name = "wait-timeout"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "09ac3b126d3914f9849036f826e054cbabdc8519970b8998ddaf3b5bd3c65f11"
+dependencies = [
+ "libc",
+]

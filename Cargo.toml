@@ -14,6 +14,11 @@ rustc-demangle = "0.1.26"
 
 # TODO only on x86 ?
 sde-output-parser = { path = "sde-output-parser", version = "*" } 
+wait-timeout = "0.2.1"
 
 # [target.unix.dependencies]
 # perf-event-open = "0.4.2"
+
+[profile.release-with-debug]
+inherits = "release"
+debug = true

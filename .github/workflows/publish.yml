@@ -56,7 +56,7 @@ jobs:
 
     - name: Get SDE
       if: ${{ matrix.os == 'ubuntu-latest' || matrix.os == 'windows-latest' }}
-      run: cargo run -- install-sde
+      run: cargo run -- install
     
     # - name: Get QBDI (windows)
     #   if: ${{ matrix.os == 'windows-latest' }}
@@ -75,29 +75,16 @@ jobs:
 
     - name: Build iterations
       shell: bash
-      run: cargo build --example iterations && mv target/debug/examples/iterations${{ matrix.executable-extension }} .
+      run: cargo build --example iterations --profile release-with-debug && mv target/debug/examples/iterations${{ matrix.executable-extension }} .
 
-    - name: Run iterations (QBDI)
-      if: ${{ matrix.os == 'macos-latest' }}
+    - name: Run iterations (QBDI or SDE)
       shell: bash
       run: |
         for i in {0..3}
         do
           i=$((10**i))
-          echo "::group::./depict${{ matrix.executable-extension }} qbdi ./iterations${{ matrix.executable-extension }} $i"
-          sudo ./target/debug/depict${{ matrix.executable-extension }} qbdi ./iterations${{ matrix.executable-extension }} $i
-          echo "::endgroup::"
-        done
-
-    - name: Run interations (SDE) (linux or windows)
-      if: ${{ matrix.os == 'ubuntu-latest' || matrix.os == 'windows-latest' }}
-      shell: bash
-      run: |
-        for i in {0..3}
-        do
-          i=$((10**i))
-          echo "::group::./depict${{ matrix.executable-extension }} sde ./iterations${{ matrix.executable-extension }} $i"
-          ./target/debug/depict${{ matrix.executable-extension }} sde ./iterations${{ matrix.executable-extension }} $i
+          echo "::group::./depict${{ matrix.executable-extension }} count ./iterations $i"
+          sudo ./target/debug/depict${{ matrix.executable-extension }} count ./iterations $i
           echo "::endgroup::"
         done
 
