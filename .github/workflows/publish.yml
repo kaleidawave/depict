@@ -57,14 +57,14 @@ jobs:
         # curl https://github.com/QBDI/QBDI/releases/download/v0.12.0/QBDI-0.12.0-osx-AARCH64.pkg -L > QBDI.pkg
         # sudo installer -pkg QBDI.pkg -target ~
 
-        sudo depict -- install-qbdi
+        sudo ./depict -- install-qbdi
 
         bash build-qbdi.sh
         mv 'qbdi/build/${{ matrix.dynamic-library }}' target/release-with-debug
 
     - name: Get SDE
       if: ${{ matrix.os == 'ubuntu-latest' || matrix.os == 'windows-latest' }}
-      run: depict install
+      run: ./depict install
     
     # - name: Get QBDI (windows)
     #   if: ${{ matrix.os == 'windows-latest' }}
@@ -87,8 +87,8 @@ jobs:
         for i in {0..3}
         do
           i=$((10**i))
-          echo "::group::depict${{ matrix.executable-extension }} count ./iterations $i"
-          depict${{ matrix.executable-extension }} count ./iterations $i
+          echo "::group::./depict${{ matrix.executable-extension }} count ./iterations $i"
+          ./depict${{ matrix.executable-extension }} count ./iterations $i
           echo "::endgroup::"
         done
 
