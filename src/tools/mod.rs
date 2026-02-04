@@ -69,8 +69,8 @@ pub fn install_sde() {
         .arg(url)
         .arg("-o")
         .arg(file)
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()
         .unwrap()
         .wait()
@@ -82,8 +82,8 @@ pub fn install_sde() {
         // -x extract, -v verbose, -j archive with gzip/bzip2/xz/lzma, -f pass filename
         .arg("-xvf") // -xvjf
         .arg(file)
-        // .stdout(Stdio::inherit())
-        // .stderr(Stdio::inherit())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()
         .unwrap()
         .wait()

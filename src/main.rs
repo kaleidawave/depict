@@ -97,7 +97,7 @@ fn main() {
             let result = tools::qbdi::run_qbdi(request, &options).unwrap();
 
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-            let result = tools::qbdi::run_qbdi(request, &options).unwrap();
+            let result = tools::sde::run_sde(request, &options).unwrap();
             match result {
                 ToolOutput::SymbolInstructionCounts { symbols, total } => print_results(
                     &mut writer.expect("--quiet must have --write-results-to"),
