@@ -42,6 +42,14 @@ jobs:
     #   run: |
     #     curl https://github.com/QBDI/QBDI/releases/download/v0.12.0/QBDI-0.12.0-ubuntu24.04-X86_64.deb -L > QBDI.deb
     #     sudo dpkg -i QBDI.deb
+
+    - name: Build binary and iterations example
+      shell: bash
+      run: |
+        cargo build --profile release-with-debug
+        cargo build --example iterations --profile release-with-debug
+        mv target/release-with-debug/examples/iterations${{ matrix.executable-extension }} .
+        mv target/release-with-debug/depict${{ matrix.executable-extension }} .
     
     - name: Get and build QBDI (macos)
       if: ${{ matrix.os == 'macos-latest' }}
@@ -49,14 +57,14 @@ jobs:
         # curl https://github.com/QBDI/QBDI/releases/download/v0.12.0/QBDI-0.12.0-osx-AARCH64.pkg -L > QBDI.pkg
         # sudo installer -pkg QBDI.pkg -target ~
 
-        sudo cargo run -- install-qbdi
+        sudo depict -- install-qbdi
 
         bash build-qbdi.sh
-        mv 'qbdi/build/${{ matrix.dynamic-library }}' target/debug
+        mv 'qbdi/build/${{ matrix.dynamic-library }}' target/release-with-debug
 
     - name: Get SDE
       if: ${{ matrix.os == 'ubuntu-latest' || matrix.os == 'windows-latest' }}
-      run: cargo run -- install
+      run: depict install
     
     # - name: Get QBDI (windows)
     #   if: ${{ matrix.os == 'windows-latest' }}
@@ -73,18 +81,14 @@ jobs:
     #     echo "---"
     #     sudo LD_BIND_NOW=1 LD_PRELOAD="$(realpath ${{ matrix.dynamic-library }})" ./iterations 10
 
-    - name: Build iterations
-      shell: bash
-      run: cargo build --example iterations --profile release-with-debug && mv target/release-with-debug/examples/iterations${{ matrix.executable-extension }} .
-
     - name: Run iterations (QBDI or SDE)
       shell: bash
       run: |
         for i in {0..3}
         do
           i=$((10**i))
-          echo "::group::./depict${{ matrix.executable-extension }} count ./iterations $i"
-          sudo ./target/debug/depict${{ matrix.executable-extension }} count ./iterations $i
+          echo "::group::depict${{ matrix.executable-extension }} count ./iterations $i"
+          depict${{ matrix.executable-extension }} count ./iterations $i
           echo "::endgroup::"
         done
 
