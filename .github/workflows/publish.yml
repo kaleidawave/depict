@@ -75,7 +75,7 @@ jobs:
 
     - name: Build iterations
       shell: bash
-      run: cargo build --example iterations --profile release-with-debug && mv target/debug/examples/iterations${{ matrix.executable-extension }} .
+      run: cargo build --example iterations --profile release-with-debug && mv target/release-with-debug/examples/iterations${{ matrix.executable-extension }} .
 
     - name: Run iterations (QBDI or SDE)
       shell: bash
