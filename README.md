@@ -68,3 +68,5 @@ You can get it on GitHub actions with the following.
 - Explain difference between SDE and QBDI
 - Add wall-clock and unix-events tools
 - Get QBDI working on more platforms / backends
+- QBDI bitwise (`SHIFT`), `HINT`
+- Merge call and branch?

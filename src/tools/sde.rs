@@ -42,16 +42,13 @@ pub fn run_sde(
         use wait_timeout::ChildExt;
 
         let secs = std::time::Duration::from_mins(3);
-        let _status_code = match child.wait_timeout(secs).unwrap() {
-            Some(status) => status.code(),
-            None => {
-                dbg!("sde timed out, killing");
-                child.kill().unwrap();
-                child.wait().unwrap().code()
-            }
+        let _status_code = if let Some(status) = child.wait_timeout(secs).unwrap() {
+            status.code()
+        } else {
+            dbg!("sde timed out, killing");
+            child.kill().unwrap();
+            child.wait().unwrap().code()
         };
-
-        dbg!(_status_code);
     }
 
     let file = std::fs::File::open(file_path).expect("sde did not create file");
@@ -72,7 +69,17 @@ pub fn run_sde(
                 stack_read: item.stack_read,
                 stack_write: item.stack_write,
                 call: item.call,
-                others: Default::default(),
+                // TODO
+                compare: 0,
+                // TODO
+                arithmetic: 0,
+                // TODO
+                logic: 0,
+                // TODO
+                r#return: 0,
+                // TODO
+                branch: 0,
+                others: std::collections::HashMap::default(),
             },
         })
         .collect();

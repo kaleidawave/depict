@@ -3,7 +3,7 @@ use std::ffi::OsString;
 use std::io::Write;
 
 use depict::{CommandRequest, Entry, Statistics, ToolOptions, ToolOutput, tools, utilities};
-use utilities::{Direction, PairedWriter, Sorting};
+use utilities::{Direction, Sorting};
 
 fn main() {
     let mut args = std::env::args().skip(1);
@@ -11,17 +11,6 @@ fn main() {
     let tool = tool.as_deref().unwrap_or("help");
 
     let input = BenchmarkInput::from_arguments(args);
-
-    let writer = PairedWriter::new_from_option(
-        input.write_to_stdout.then(std::io::stdout),
-        input.write_results_to.map(|path| {
-            let path = std::path::Path::new(&path);
-            if let Some(parent) = path.parent() {
-                std::fs::create_dir_all(parent).unwrap();
-            }
-            std::fs::File::create(path).unwrap()
-        }),
-    );
 
     if input.limit != usize::MAX && input.sort.is_none() {
         panic!("--limit requires --sort");
@@ -45,19 +34,13 @@ fn main() {
                 merge_internals: input.merge_internals,
             };
             let result = tools::qbdi::run_qbdi(request, &options).unwrap();
-            match result {
-                ToolOutput::SymbolInstructionCounts { symbols, total } => print_results(
-                    &mut writer.expect("--quiet must have --write-results-to"),
-                    symbols,
-                    total,
-                    input.format,
-                    input.sort,
-                    input.limit,
-                    input.breakdown,
-                )
-                .unwrap(),
-                _ => todo!(),
-            }
+            output_result(
+                result,
+                input.sort,
+                input.limit,
+                input.breakdown,
+                input.write_results_to,
+            );
         }
         #[cfg(any(target_arch = "x86", target_arch = "x86_64", debug_assertions))]
         "sde" => {
@@ -70,19 +53,13 @@ fn main() {
                 merge_internals: input.merge_internals,
             };
             let result = tools::sde::run_sde(request, &options).unwrap();
-            match result {
-                ToolOutput::SymbolInstructionCounts { symbols, total } => print_results(
-                    &mut writer.expect("--quiet must have --write-results-to"),
-                    symbols,
-                    total,
-                    input.format,
-                    input.sort,
-                    input.limit,
-                    input.breakdown,
-                )
-                .unwrap(),
-                _ => todo!(),
-            }
+            output_result(
+                result,
+                input.sort,
+                input.limit,
+                input.breakdown,
+                input.write_results_to,
+            );
         }
         "count" => {
             let request = CommandRequest {
@@ -98,19 +75,14 @@ fn main() {
 
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             let result = tools::sde::run_sde(request, &options).unwrap();
-            match result {
-                ToolOutput::SymbolInstructionCounts { symbols, total } => print_results(
-                    &mut writer.expect("--quiet must have --write-results-to"),
-                    symbols,
-                    total,
-                    input.format,
-                    input.sort,
-                    input.limit,
-                    input.breakdown,
-                )
-                .unwrap(),
-                _ => todo!(),
-            }
+
+            output_result(
+                result,
+                input.sort,
+                input.limit,
+                input.breakdown,
+                input.write_results_to,
+            );
         }
         #[cfg(target_family = "unix")]
         "perf-events" => {
@@ -136,6 +108,45 @@ fn main() {
     }
 }
 
+fn output_result(
+    result: ToolOutput,
+    sort: Option<Sorting>,
+    limit: usize,
+    breakdown: bool,
+    write_results_to: Option<String>,
+) {
+    match result {
+        ToolOutput::SymbolInstructionCounts { symbols, total } => {
+            // TODO cloning ...
+            print_results(
+                &mut std::io::stdout(),
+                symbols.clone(),
+                total.clone(),
+                OutputFormat::default(),
+                sort.clone(),
+                limit,
+                breakdown,
+            )
+            .unwrap();
+            if let Some(path) = write_results_to {
+                let path = std::path::Path::new(&path);
+                if let Some(parent) = path.parent() {
+                    std::fs::create_dir_all(parent).unwrap();
+                }
+                let mut file = std::fs::File::create(path).unwrap();
+                let format =
+                    if let Some(extension) = path.extension().and_then(std::ffi::OsStr::to_str) {
+                        OutputFormat::from_extension(extension).unwrap_or_default()
+                    } else {
+                        OutputFormat::default()
+                    };
+                print_results(&mut file, symbols, total, format, sort, limit, breakdown).unwrap();
+            }
+        }
+        _ => todo!(),
+    }
+}
+
 #[derive(Debug, Default)]
 pub enum OutputFormat {
     #[default]
@@ -145,13 +156,25 @@ pub enum OutputFormat {
     Markdown,
 }
 
+impl OutputFormat {
+    pub fn from_extension(extension: &str) -> Result<Self, &str> {
+        match extension {
+            "txt" => Ok(Self::Plain),
+            "json" => Ok(Self::JSON),
+            "csv" => Ok(Self::CSV),
+            "md" => Ok(Self::Markdown),
+            unknown => Err(unknown),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct BenchmarkInput {
     /// number of symbol entries to show
     pub limit: usize,
     pub sort: Option<Sorting>,
-    /// plain, JSON, markdown, csv
-    pub format: OutputFormat,
+    // /// plain, JSON, markdown, csv
+    // pub format: OutputFormat,
     // ...
     pub program: OsString,
     pub arguments: Vec<OsString>,
@@ -178,7 +201,7 @@ impl BenchmarkInput {
                 field: "total".into(),
                 direction: Direction::Ascending,
             }),
-            format: OutputFormat::default(),
+            // format: OutputFormat::default(),
             // ...
             program: OsString::new(),
             arguments: Vec::new(),
@@ -196,19 +219,19 @@ impl BenchmarkInput {
         let mut left_over: Option<String> = None;
         while let Some(arg) = left_over.take().or_else(|| args.next()) {
             match arg.as_str() {
-                "--format" => {
-                    let format = args.next().expect("no format given");
-                    this.format = match format.as_str() {
-                        "plain" => OutputFormat::Plain,
-                        "json" => OutputFormat::JSON,
-                        "csv" => OutputFormat::CSV,
-                        "markdown" => OutputFormat::Markdown,
-                        format => {
-                            eprintln!("Unknown output format '{format:?}'");
-                            OutputFormat::Plain
-                        }
-                    };
-                }
+                // "--format" => {
+                //     let format = args.next().expect("no format given");
+                //     this.format = match format.as_str() {
+                //         "plain" => OutputFormat::Plain,
+                //         "json" => OutputFormat::JSON,
+                //         "csv" => OutputFormat::CSV,
+                //         "markdown" => OutputFormat::Markdown,
+                //         format => {
+                //             eprintln!("Unknown output format '{format:?}'");
+                //             OutputFormat::Plain
+                //         }
+                //     };
+                // }
                 "--sort" => {
                     let field = args.next().expect("expected field");
                     let next = args.next();
@@ -367,21 +390,17 @@ pub fn print_results(
                 let fill = &WHITESPACE[..max_name_width - symbol_name.len()];
 
                 write!(to, "{symbol_name}{fill}")?;
-                write!(
-                    to,
-                    " total: {count}",
-                    count = count_with_seperator(row.statistics.total as usize)
-                )?;
                 if breakdown {
-                    write!(
-                        to,
-                        " mem_read: {mem_read}, mem_write: {mem_write}, stack_read: {stack_read}, stack_write: {stack_write}, call {call}",
-                        mem_read = count_with_seperator(row.statistics.mem_read as usize),
-                        mem_write = count_with_seperator(row.statistics.mem_write as usize),
-                        stack_read = count_with_seperator(row.statistics.stack_read as usize),
-                        stack_write = count_with_seperator(row.statistics.stack_write as usize),
-                        call = count_with_seperator(row.statistics.call as usize)
-                    )?;
+                    let mut first = true;
+                    for (header, value) in row.statistics.as_rows() {
+                        let initial = if std::mem::take(&mut first) { "" } else { ", " };
+                        write!(
+                            to,
+                            "{initial}{header}: {value}",
+                            value = count_with_seperator(value as usize)
+                        )?;
+                    }
+
                     // TODO
                     // for (name, count) in &row.statistics.others {
                     //     write!(
@@ -390,8 +409,14 @@ pub fn print_results(
                     //         count = count_with_seperator(*count as usize)
                     //     )?;
                     // }
+                    writeln!(to)?;
+                } else {
+                    write!(
+                        to,
+                        "total: {count}",
+                        count = count_with_seperator(row.statistics.total as usize)
+                    )?;
                 }
-                writeln!(to)?;
             }
 
             Ok(())
@@ -403,16 +428,16 @@ pub fn print_results(
                     buf.push(',');
                 }
                 if breakdown {
-                    buf.push_str(&json_builder_macro::json! {
-                        symbol_name: row.symbol_name.as_str(),
-                        total: row.statistics.total,
-                        mem_read: row.statistics.mem_read,
-                        mem_write: row.statistics.mem_write,
-                        stack_read: row.statistics.stack_read,
-                        stack_write: row.statistics.stack_write,
-                        call: row.statistics.call,
-                        kinds: row.statistics.others
-                    });
+                    let mut builder = json_builder_macro::Builder::new(&mut buf);
+                    builder.add("symbol_name", row.symbol_name.as_str());
+                    for (key, value) in row.statistics.as_rows() {
+                        if key == "other" {
+                            continue;
+                        }
+                        builder.add(key, value);
+                    }
+                    builder.add("other", row.statistics.others.clone());
+                    builder.end();
                 } else {
                     buf.push_str(&json_builder_macro::json! {
                         symbol_name: row.symbol_name.as_str(),
@@ -425,12 +450,13 @@ pub fn print_results(
         }
         OutputFormat::CSV => {
             if breakdown {
-                writeln!(
-                    to,
-                    "symbol name,count,mem_read,mem_write,stack_read,stack_write,call"
-                )?;
+                write!(to, "symbol name")?;
+                for (header, _) in rows[0].statistics.as_rows() {
+                    write!(to, ",{header}")?;
+                }
+                writeln!(to)?;
             } else {
-                writeln!(to, "symbol name,count")?;
+                writeln!(to, "symbol name,total")?;
             }
             for row in rows {
                 let Entry {
@@ -438,19 +464,11 @@ pub fn print_results(
                     statistics,
                 } = row;
                 if breakdown {
-                    let Statistics {
-                        total,
-                        mem_read,
-                        mem_write,
-                        stack_read,
-                        stack_write,
-                        call,
-                        others: _,
-                    } = statistics;
-                    writeln!(
-                        to,
-                        "`{symbol_name}`,{total},{mem_read},{mem_write},{stack_read},{stack_write},{call}"
-                    )?;
+                    write!(to, "\"{symbol_name}\"")?;
+                    for (_, value) in statistics.as_rows() {
+                        write!(to, ",{value}")?;
+                    }
+                    writeln!(to)?;
                     // TODO ..?
                     // for (name, count) in &row.others {
                     //     write!(
@@ -460,18 +478,23 @@ pub fn print_results(
                     //     )?;
                     // }
                 } else {
-                    writeln!(to, "|`{symbol_name}`|{total}|", total = statistics.total)?;
+                    writeln!(to, "\"{symbol_name}\",{total}", total = statistics.total)?;
                 }
             }
             Ok(())
         }
         OutputFormat::Markdown => {
             if breakdown {
-                writeln!(
-                    to,
-                    "|symbol name|count|mem_read|mem_write|stack_read|stack_write|call|other|"
-                )?;
-                writeln!(to, "|---|---|---|---|---|---|---|")?;
+                let start = rows[0].statistics.as_rows();
+                write!(to, "|symbol name")?;
+                for (header, _) in &start {
+                    write!(to, "|{header}")?;
+                }
+                writeln!(to, "|")?;
+                for _ in 0..=start.len() {
+                    write!(to, "|---")?;
+                }
+                writeln!(to, "|")?;
             } else {
                 writeln!(to, "|symbol name|count|")?;
                 writeln!(to, "|---|---|")?;
@@ -482,19 +505,11 @@ pub fn print_results(
                     statistics,
                 } = row;
                 if breakdown {
-                    let Statistics {
-                        total,
-                        mem_read,
-                        mem_write,
-                        stack_read,
-                        stack_write,
-                        call,
-                        others: _,
-                    } = statistics;
-                    writeln!(
-                        to,
-                        "|`{symbol_name}`|{total}|{mem_read}|{mem_write}|{stack_read}|{stack_write}|{call}|"
-                    )?;
+                    write!(to, "\"{symbol_name}\"")?;
+                    for (_, value) in statistics.as_rows() {
+                        write!(to, ",{value}")?;
+                    }
+                    writeln!(to)?;
                     // TODO ..?
                     // for (name, count) in &row.others {
                     //     write!(

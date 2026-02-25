@@ -22,3 +22,6 @@ wait-timeout = "0.2.1"
 [profile.release-with-debug]
 inherits = "release"
 debug = true
+
+[package.metadata.commands]
+move-qbdi = "cp qbdi/build/libqbdi_tracer.dylib target/debug/libqbdi_tracer.dylib"

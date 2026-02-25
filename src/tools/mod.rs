@@ -95,12 +95,14 @@ pub fn install_sde() {
     std::fs::rename(target, dest).unwrap();
 }
 
+#[must_use]
 #[cfg(target_os = "windows")]
 pub fn adjacent_sde_path() -> Option<std::path::PathBuf> {
     let path = std::env::current_exe().ok()?;
     Some(path.parent()?.join("sde").join("sde").with_extension("exe"))
 }
 
+#[must_use]
 #[cfg(unix)]
 pub fn adjacent_sde_path() -> Option<std::path::PathBuf> {
     let path = std::env::current_exe().ok()?;

@@ -66,6 +66,10 @@ static void increment(const char *sym, const char *kind) {
 	table[h]  = e;
 }
 
+bool starts_with(const char *str, const char *pre) {
+    return strncmp(str, pre, strlen(pre)) == 0;
+}
+
 static const char *classify(const InstAnalysis *ia) {
 	// return ia->mnemonic;
 	if (ia->isBranch) return "branch";
@@ -74,7 +78,9 @@ static const char *classify(const InstAnalysis *ia) {
 	if (ia->isCompare) return "compare";
 	// TODO is there a way to discern stack vs memory here
 	if (ia->mayLoad) return "mem_read";
-	if (ia->mayStore) return "mem_store";
+	if (ia->mayStore) return "mem_write";
+	if (starts_with(ia->mnemonic, "ADD") || starts_with(ia->mnemonic, "SUB")) return "arithmetic";
+	if (starts_with(ia->mnemonic, "AND") || starts_with(ia->mnemonic, "ORR")) return "logic";
 	return ia->mnemonic;
 	// return "other";
 }

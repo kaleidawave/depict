@@ -12,6 +12,11 @@ struct Item {
     stack_read: u32,
     stack_write: u32,
     call: u32,
+    branch: u32,
+    r#return: u32,
+    compare: u32,
+    logic: u32,
+    arithmetic: u32,
     others: HashMap<String, u32>,
 }
 
@@ -98,8 +103,8 @@ pub fn run_qbdi(
 
     let content = BufReader::new(child.stdout.take().unwrap());
 
-    let mut internal: Statistics = Statistics::default();
     let mut total: Statistics = Statistics::default();
+    let mut internal: Item = Item::default();
 
     // TODO this seems highly inefficient
     let mut items: HashMap<String, Item> = HashMap::new();
@@ -128,7 +133,8 @@ pub fn run_qbdi(
 
             let func = format!("{func:#}", func = rustc_demangle::demangle(func));
 
-            if options.merge_internals {
+            let item: &mut Item = if options.merge_internals {
+                // TODO some other things are needed here
                 let bad_prefixes = &[
                     "std::",
                     "core::",
@@ -136,16 +142,17 @@ pub fn run_qbdi(
                     "_",
                     "*",
                     "OUTLINED_FUNCTION_",
-                    "<std::",
+                    // "<std::",
                 ];
                 let skip = bad_prefixes.iter().any(|prefix| func.starts_with(prefix));
                 if skip {
-                    internal.total += count;
-                    continue;
+                    &mut internal
+                } else {
+                    items.entry(func).or_default()
                 }
-            }
-
-            let item = items.entry(func).or_default();
+            } else {
+                items.entry(func).or_default()
+            };
 
             total.total += count;
             item.total += count;
@@ -163,6 +170,26 @@ pub fn run_qbdi(
                     item.call = count;
                     total.call += count;
                 }
+                "return" => {
+                    item.r#return = count;
+                    total.r#return += count;
+                }
+                "branch" => {
+                    item.branch = count;
+                    total.branch += count;
+                }
+                "compare" => {
+                    item.compare = count;
+                    total.compare += count;
+                }
+                "logic" => {
+                    item.logic = count;
+                    total.logic += count;
+                }
+                "arithmetic" => {
+                    item.arithmetic = count;
+                    total.arithmetic += count;
+                }
                 kind => {
                     item.others.insert(kind.to_owned(), count);
                     total.add_other(kind.to_owned(), count);
@@ -175,6 +202,10 @@ pub fn run_qbdi(
 
     child.wait().unwrap();
 
+    if options.merge_internals {
+        items.insert("Internal".to_owned(), internal);
+    }
+
     let symbols: Vec<_> = items
         .into_iter()
         .map(|(name, item)| Entry {
@@ -186,6 +217,11 @@ pub fn run_qbdi(
                 stack_read: item.stack_read,
                 stack_write: item.stack_write,
                 call: item.call,
+                r#return: item.r#return,
+                branch: item.branch,
+                compare: item.compare,
+                logic: item.logic,
+                arithmetic: item.arithmetic,
                 others: item.others,
             },
         })
