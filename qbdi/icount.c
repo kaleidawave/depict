@@ -66,13 +66,21 @@ static void increment(const char *sym, const char *kind) {
 	table[h]  = e;
 }
 
+bool starts_with(const char *str, const char *pre) {
+    return strncmp(str, pre, strlen(pre)) == 0;
+}
+
 static const char *classify(const InstAnalysis *ia) {
 	// return ia->mnemonic;
 	if (ia->isBranch) return "branch";
 	if (ia->isCall)   return "call";
 	if (ia->isReturn) return "return";
 	if (ia->isCompare) return "compare";
-	if (ia->mayLoad || ia->mayStore) return "memory";
+	// TODO is there a way to discern stack vs memory here
+	if (ia->mayLoad) return "mem_read";
+	if (ia->mayStore) return "mem_write";
+	if (starts_with(ia->mnemonic, "ADD") || starts_with(ia->mnemonic, "SUB")) return "arithmetic";
+	if (starts_with(ia->mnemonic, "AND") || starts_with(ia->mnemonic, "ORR")) return "logic";
 	return ia->mnemonic;
 	// return "other";
 }
@@ -100,7 +108,7 @@ int qbdipreload_on_exit(int status) {
 	for (int i = 0; i < HASH_SIZE; i++) {
 		Entry *e = table[i];
 		while (e) {
-			printf("bm::%s/%s/%" PRIu64 "\n", e->symbol, e->kind, e->count);
+			printf("depict_qbdi::%s/%s/%" PRIu64 "\n", e->symbol, e->kind, e->count);
 			e = e->next;
 		}
 	}

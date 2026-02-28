@@ -2,95 +2,175 @@ use std::collections::HashMap;
 use std::ffi::OsString;
 use std::io::Write;
 
-use depict::{CommandRequest, Entry, ToolOptions, ToolOutput, tools, utilities};
-use utilities::{Direction, PairedWriter, Sorting};
+use depict::{CommandRequest, Entry, Statistics, ToolOptions, ToolOutput, tools, utilities};
+use utilities::{Direction, Sorting};
 
 fn main() {
     let mut args = std::env::args().skip(1);
     let tool = args.next();
     let tool = tool.as_deref().unwrap_or("help");
 
-    let input = BenchmarkInput::from_arguments(args);
-
-    let writer = PairedWriter::new_from_option(
-        input.write_to_stdout.then(std::io::stdout),
-        input.write_results_to.map(|path| {
-            let path = std::path::Path::new(&path);
-            if let Some(parent) = path.parent() {
-                std::fs::create_dir_all(parent).unwrap();
-            }
-            std::fs::File::create(path).unwrap()
-        }),
-    );
-
-    if input.limit != usize::MAX && input.sort.is_none() {
-        panic!("--limit requires --sort");
-    }
-
     match tool {
-        "--info" | "help" => {
+        "--info" | "--help" | "help" => {
             println!("depict");
-            println!("run 'qbdi', 'sde', 'perf-events' or 'time'");
-        }
-        "qbdi" => {
-            let request = CommandRequest {
-                program: input.program.into(),
-                arguments: input.arguments.into_iter().map(Into::into).collect(),
-            };
-            let options = ToolOptions {
-                keep: input.keep,
-                skip_internals: input.skip_internals,
-            };
-            let result = tools::qbdi::run_qbdi(request, &options).unwrap();
-            match result {
-                ToolOutput::SymbolInstructionCounts { symbols, total } => print_results(
-                    &mut writer.expect("--quiet must have --write-results-to"),
-                    symbols,
-                    total as usize,
-                    input.format,
-                    input.sort,
-                    input.limit,
-                    input.breakdown,
-                )
-                .unwrap(),
-                _ => todo!(),
-            }
+            println!("run 'count', 'install'"); // , 'perf-events' or 'time'
         }
         "time" => {
             todo!()
         }
-        #[cfg(any(target_arch = "x86", target_arch = "x86_64", debug_assertions))]
-        "sde" => {
+        "qbdi" => {
+            let input = BenchmarkInput::from_arguments(args);
+
+            if input.limit != usize::MAX && input.sort.is_none() {
+                panic!("--limit requires --sort");
+            }
             let request = CommandRequest {
                 program: input.program.into(),
                 arguments: input.arguments.into_iter().map(Into::into).collect(),
             };
             let options = ToolOptions {
                 keep: input.keep,
-                skip_internals: input.skip_internals,
+                merge_internals: input.merge_internals,
+            };
+            let result = tools::qbdi::run_qbdi(request, &options).unwrap();
+            output_result(
+                result,
+                input.sort,
+                input.limit,
+                input.breakdown,
+                input.write_results_to,
+            );
+        }
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64", debug_assertions))]
+        "sde" => {
+            let input = BenchmarkInput::from_arguments(args);
+
+            if input.limit != usize::MAX && input.sort.is_none() {
+                panic!("--limit requires --sort");
+            }
+            let request = CommandRequest {
+                program: input.program.into(),
+                arguments: input.arguments.into_iter().map(Into::into).collect(),
+            };
+            let options = ToolOptions {
+                keep: input.keep,
+                merge_internals: input.merge_internals,
             };
             let result = tools::sde::run_sde(request, &options).unwrap();
-            match result {
-                ToolOutput::SymbolInstructionCounts { symbols, total } => print_results(
-                    &mut writer.expect("--quiet must have --write-results-to"),
-                    symbols,
-                    total as usize,
-                    input.format,
-                    input.sort,
-                    input.limit,
-                    input.breakdown,
-                )
-                .unwrap(),
-                _ => todo!(),
+            output_result(
+                result,
+                input.sort,
+                input.limit,
+                input.breakdown,
+                input.write_results_to,
+            );
+        }
+        "count" => {
+            let input = BenchmarkInput::from_arguments(args);
+
+            if input.limit != usize::MAX && input.sort.is_none() {
+                panic!("--limit requires --sort");
             }
+            let request = CommandRequest {
+                program: input.program.into(),
+                arguments: input.arguments.into_iter().map(Into::into).collect(),
+            };
+            let options = ToolOptions {
+                keep: input.keep,
+                merge_internals: input.merge_internals,
+            };
+            #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
+            let result = tools::qbdi::run_qbdi(request, &options).unwrap();
+
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            let result = tools::sde::run_sde(request, &options).unwrap();
+
+            output_result(
+                result,
+                input.sort,
+                input.limit,
+                input.breakdown,
+                input.write_results_to,
+            );
         }
         #[cfg(target_family = "unix")]
         "perf-events" => {
             todo!()
         }
+        "install" => {
+            #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
+            tools::install_qbdi(true, true);
+
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            tools::install_sde();
+        }
+        "install-qbdi" => {
+            #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
+            {
+                let mut just_lib = false;
+                let mut just_qbdi = false;
+                for arg in args {
+                    if arg == "--lib" {
+                        just_lib = true;
+                    } else if arg == "--qbdi" {
+                        just_qbdi = true;
+                    } else {
+                        panic!("unknown {arg:?}");
+                    }
+                }
+                if !just_lib && !just_qbdi {
+                    just_lib = true;
+                    just_qbdi = true;
+                }
+                tools::install_qbdi(just_lib, just_qbdi);
+            }
+        }
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
+        "install-sde" => {
+            tools::install_sde();
+        }
         tool => {
             println!("unknown tool {tool:?}. run with 'qbdi', 'sde', 'perf-events' or 'time'");
         }
+    }
+}
+
+fn output_result(
+    result: ToolOutput,
+    sort: Option<Sorting>,
+    limit: usize,
+    breakdown: bool,
+    write_results_to: Option<String>,
+) {
+    match result {
+        ToolOutput::SymbolInstructionCounts { symbols, total } => {
+            // TODO cloning ...
+            print_results(
+                &mut std::io::stdout(),
+                symbols.clone(),
+                total.clone(),
+                OutputFormat::default(),
+                sort.clone(),
+                limit,
+                breakdown,
+            )
+            .unwrap();
+            if let Some(path) = write_results_to {
+                let path = std::path::Path::new(&path);
+                if let Some(parent) = path.parent() {
+                    std::fs::create_dir_all(parent).unwrap();
+                }
+                let mut file = std::fs::File::create(path).unwrap();
+                let format =
+                    if let Some(extension) = path.extension().and_then(std::ffi::OsStr::to_str) {
+                        OutputFormat::from_extension(extension).unwrap_or_default()
+                    } else {
+                        OutputFormat::default()
+                    };
+                print_results(&mut file, symbols, total, format, sort, limit, breakdown).unwrap();
+            }
+        }
+        _ => todo!(),
     }
 }
 
@@ -103,13 +183,25 @@ pub enum OutputFormat {
     Markdown,
 }
 
+impl OutputFormat {
+    pub fn from_extension(extension: &str) -> Result<Self, &str> {
+        match extension {
+            "txt" => Ok(Self::Plain),
+            "json" => Ok(Self::JSON),
+            "csv" => Ok(Self::CSV),
+            "md" => Ok(Self::Markdown),
+            unknown => Err(unknown),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct BenchmarkInput {
     /// number of symbol entries to show
     pub limit: usize,
     pub sort: Option<Sorting>,
-    /// plain, JSON, markdown, csv
-    pub format: OutputFormat,
+    // /// plain, JSON, markdown, csv
+    // pub format: OutputFormat,
     // ...
     pub program: OsString,
     pub arguments: Vec<OsString>,
@@ -120,7 +212,7 @@ pub struct BenchmarkInput {
     /// Save SDE file...
     pub keep: Option<String>,
     /// skip Rust internals
-    pub skip_internals: bool,
+    pub merge_internals: bool,
     /// include all instruction kinds
     pub breakdown: bool,
     // things
@@ -132,8 +224,11 @@ impl BenchmarkInput {
     pub fn from_arguments(mut args: impl Iterator<Item = String>) -> Self {
         let mut this = Self {
             limit: usize::MAX,
-            sort: None,
-            format: OutputFormat::default(),
+            sort: Some(Sorting {
+                field: "total".into(),
+                direction: Direction::Ascending,
+            }),
+            // format: OutputFormat::default(),
             // ...
             program: OsString::new(),
             arguments: Vec::new(),
@@ -141,7 +236,7 @@ impl BenchmarkInput {
             generic_arguments: HashMap::new(),
             // ...
             keep: None,
-            skip_internals: true,
+            merge_internals: false,
             breakdown: false,
             // ...
             write_results_to: None,
@@ -151,18 +246,19 @@ impl BenchmarkInput {
         let mut left_over: Option<String> = None;
         while let Some(arg) = left_over.take().or_else(|| args.next()) {
             match arg.as_str() {
-                "--format" => {
-                    let format = args.next().expect("no format given");
-                    this.format = match format.as_str() {
-                        "plain" => OutputFormat::Plain,
-                        "json" => OutputFormat::JSON,
-                        "markdown" => OutputFormat::Markdown,
-                        format => {
-                            eprintln!("Unknown output format '{format:?}'");
-                            OutputFormat::Plain
-                        }
-                    };
-                }
+                // "--format" => {
+                //     let format = args.next().expect("no format given");
+                //     this.format = match format.as_str() {
+                //         "plain" => OutputFormat::Plain,
+                //         "json" => OutputFormat::JSON,
+                //         "csv" => OutputFormat::CSV,
+                //         "markdown" => OutputFormat::Markdown,
+                //         format => {
+                //             eprintln!("Unknown output format '{format:?}'");
+                //             OutputFormat::Plain
+                //         }
+                //     };
+                // }
                 "--sort" => {
                     let field = args.next().expect("expected field");
                     let next = args.next();
@@ -193,8 +289,8 @@ impl BenchmarkInput {
                 "--write-results-to" => {
                     this.write_results_to = args.next();
                 }
-                "--all" => {
-                    this.skip_internals = false;
+                "--merge-internals" => {
+                    this.merge_internals = true;
                 }
                 "--breakdown" => {
                     this.breakdown = true;
@@ -233,7 +329,7 @@ impl BenchmarkInput {
 pub fn print_results(
     to: &mut impl Write,
     mut rows: Vec<Entry>,
-    total_count: usize,
+    total: Statistics,
     output_format: OutputFormat,
     sorting: Option<utilities::Sorting>,
     limit: usize,
@@ -257,7 +353,10 @@ pub fn print_results(
                 });
             }
             "total" => {
-                rows.sort_unstable_by(|lhs, rhs| sort.direction.compare(&lhs.total, &rhs.total));
+                rows.sort_unstable_by(|lhs, rhs| {
+                    sort.direction
+                        .compare(&lhs.statistics.total, &rhs.statistics.total)
+                });
             }
             field => {
                 writeln!(to, "error: unknown field {field:?}")?;
@@ -274,6 +373,14 @@ pub fn print_results(
     } else {
         0
     };
+
+    rows.insert(
+        0,
+        Entry {
+            symbol_name: "Total".into(),
+            statistics: total,
+        },
+    );
 
     let rows = &rows[skip..];
     let rows = &rows[..std::cmp::min(rows.len(), limit)];
@@ -298,11 +405,6 @@ pub fn print_results(
             //     println!();
             // }
 
-            writeln!(
-                to,
-                "Run {total} instructions",
-                total = count_with_seperator(total_count)
-            )?;
             for row in rows {
                 let symbol_name: Cow<'_, str> = if row.symbol_name.len() > MAX_WIDTH {
                     Cow::Owned(format!(
@@ -315,21 +417,33 @@ pub fn print_results(
                 let fill = &WHITESPACE[..max_name_width - symbol_name.len()];
 
                 write!(to, "{symbol_name}{fill}")?;
-                write!(
-                    to,
-                    " total:  {count}",
-                    count = count_with_seperator(row.total as usize)
-                )?;
                 if breakdown {
-                    for (name, count) in &row.entries {
+                    let mut first = true;
+                    for (header, value) in row.statistics.as_rows() {
+                        let initial = if std::mem::take(&mut first) { "" } else { ", " };
                         write!(
                             to,
-                            " {name}:  {count}",
-                            count = count_with_seperator(*count as usize)
+                            "{initial}{header}: {value}",
+                            value = count_with_seperator(value as usize)
                         )?;
                     }
+
+                    // TODO
+                    // for (name, count) in &row.statistics.others {
+                    //     write!(
+                    //         to,
+                    //         " {name}: {count}",
+                    //         count = count_with_seperator(*count as usize)
+                    //     )?;
+                    // }
+                    writeln!(to)?;
+                } else {
+                    writeln!(
+                        to,
+                        "total: {count}",
+                        count = count_with_seperator(row.statistics.total as usize)
+                    )?;
                 }
-                writeln!(to)?;
             }
 
             Ok(())
@@ -341,15 +455,20 @@ pub fn print_results(
                     buf.push(',');
                 }
                 if breakdown {
-                    buf.push_str(&json_builder_macro::json! {
-                        symbol_name: row.symbol_name.as_str(),
-                        total: row.total,
-                        kinds: row.entries
-                    });
+                    let mut builder = json_builder_macro::Builder::new(&mut buf);
+                    builder.add("symbol_name", row.symbol_name.as_str());
+                    for (key, value) in row.statistics.as_rows() {
+                        if key == "other" {
+                            continue;
+                        }
+                        builder.add(key, value);
+                    }
+                    builder.add("other", row.statistics.others.clone());
+                    builder.end();
                 } else {
                     buf.push_str(&json_builder_macro::json! {
                         symbol_name: row.symbol_name.as_str(),
-                        total: row.total
+                        total: row.statistics.total
                     });
                 }
             }
@@ -357,43 +476,78 @@ pub fn print_results(
             write!(to, "{buf}")
         }
         OutputFormat::CSV => {
-            writeln!(to, "symbol name,count")?;
+            if breakdown {
+                write!(to, "symbol name")?;
+                for (header, _) in rows[0].statistics.as_rows() {
+                    write!(to, ",{header}")?;
+                }
+                writeln!(to)?;
+            } else {
+                writeln!(to, "symbol name,total")?;
+            }
             for row in rows {
                 let Entry {
-                    symbol_name, total, ..
+                    symbol_name,
+                    statistics,
                 } = row;
-                writeln!(to, "\"{symbol_name}\",{total}")?;
-                // TODO ..?
-                // if breakdown {
-                //     for (name, count) in &row.entries {
-                //         write!(
-                //             to,
-                //             ",\"{name}\",{count}",
-                //             count = *count as usize
-                //         )?;
-                //     }
-                // }
+                if breakdown {
+                    write!(to, "\"{symbol_name}\"")?;
+                    for (_, value) in statistics.as_rows() {
+                        write!(to, ",{value}")?;
+                    }
+                    writeln!(to)?;
+                    // TODO ..?
+                    // for (name, count) in &row.others {
+                    //     write!(
+                    //         to,
+                    //         ",\"{name}\",{count}",
+                    //         count = *count as usize
+                    //     )?;
+                    // }
+                } else {
+                    writeln!(to, "\"{symbol_name}\",{total}", total = statistics.total)?;
+                }
             }
             Ok(())
         }
         OutputFormat::Markdown => {
-            writeln!(to, "|symbol name|count|")?;
-            writeln!(to, "|---|---|")?;
+            if breakdown {
+                let start = rows[0].statistics.as_rows();
+                write!(to, "|symbol name")?;
+                for (header, _) in &start {
+                    write!(to, "|{header}")?;
+                }
+                writeln!(to, "|")?;
+                for _ in 0..=start.len() {
+                    write!(to, "|---")?;
+                }
+                writeln!(to, "|")?;
+            } else {
+                writeln!(to, "|symbol name|count|")?;
+                writeln!(to, "|---|---|")?;
+            }
             for row in rows {
                 let Entry {
-                    symbol_name, total, ..
+                    symbol_name,
+                    statistics,
                 } = row;
-                writeln!(to, "|`{symbol_name}`|{total}|")?;
-                // TODO ..?
-                // if breakdown {
-                //     for (name, count) in &row.entries {
-                //         write!(
-                //             to,
-                //             ",\"{name}\",{count}",
-                //             count = *count as usize
-                //         )?;
-                //     }
-                // }
+                if breakdown {
+                    write!(to, "\"{symbol_name}\"")?;
+                    for (_, value) in statistics.as_rows() {
+                        write!(to, ",{value}")?;
+                    }
+                    writeln!(to)?;
+                    // TODO ..?
+                    // for (name, count) in &row.others {
+                    //     write!(
+                    //         to,
+                    //         "|\"{name}\"|{count}",
+                    //         count = *count as usize
+                    //     )?;
+                    // }
+                } else {
+                    writeln!(to, "|`{symbol_name}`|{total}|", total = statistics.total)?;
+                }
             }
             Ok(())
         }

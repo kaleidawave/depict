@@ -1,4 +1,4 @@
-use crate::Entry;
+use crate::{Entry, Statistics};
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
@@ -7,7 +7,17 @@ use std::process::{Command, Stdio};
 #[derive(Default)]
 struct Item {
     total: u32,
-    instruction_kind: Vec<(String, u32)>,
+    mem_read: u32,
+    mem_write: u32,
+    stack_read: u32,
+    stack_write: u32,
+    call: u32,
+    branch: u32,
+    r#return: u32,
+    compare: u32,
+    logic: u32,
+    arithmetic: u32,
+    others: HashMap<String, u32>,
 }
 
 pub fn run_qbdi(
@@ -30,16 +40,7 @@ pub fn run_qbdi(
             Command::new(preloader.display().to_string())
         };
         {
-            let library_name = "libqbdi_tracer.dll";
-            let library = root.parent().unwrap().join(library_name);
-            if !library.is_file() {
-                eprintln!(
-                    "{library_name:?} not adjacent to {root}. {library} does not exist",
-                    library = library.display(),
-                    root = root.display(),
-                );
-                return Err(());
-            }
+            let library = super::adjacent_qbdi_lib(true).unwrap();
             command.arg(library.display().to_string());
         }
 
@@ -51,34 +52,14 @@ pub fn run_qbdi(
 
         #[cfg(target_os = "macos")]
         {
-            let library_name = "libqbdi_tracer.dylib";
-            let root = std::env::current_exe().unwrap();
-            let library = root.parent().unwrap().join(library_name);
-            if !library.is_file() {
-                eprintln!(
-                    "{library_name:?} not adjacent to {root}. {library} does not exist",
-                    library = library.display(),
-                    root = root.display(),
-                );
-                return Err(());
-            }
+            let library = super::adjacent_qbdi_lib(true).unwrap();
             command.env("DYLD_BIND_AT_LAUNCH", "1");
             command.env("DYLD_INSERT_LIBRARIES", library.display().to_string());
         }
 
         #[cfg(target_os = "linux")]
         {
-            let library_name = "libqbdi_tracer.so";
-            let root = std::env::current_exe().unwrap();
-            let library = root.parent().unwrap().join(library_name);
-            if !library.is_file() {
-                eprintln!(
-                    "{library_name:?} not adjacent to {root}. {library} does not exist",
-                    library = library.display(),
-                    root = root.display(),
-                );
-                return Err(());
-            }
+            let library = super::adjacent_qbdi_lib(true).unwrap();
             command.env("LD_BIND_NOW", "1");
             command.env("LD_PRELOAD", dbg!(library.display().to_string()));
         }
@@ -93,44 +74,98 @@ pub fn run_qbdi(
 
     let content = BufReader::new(child.stdout.take().unwrap());
 
+    let mut total: Statistics = Statistics::default();
+    let mut internal: Item = Item::default();
+
     // TODO this seems highly inefficient
     let mut items: HashMap<String, Item> = HashMap::new();
 
-    let mut total = 0;
     for line in content.lines() {
         let line = line.unwrap();
 
         #[cfg(target_os = "linux")]
         eprintln!("TEMP linux: {line}");
 
-        if let Some(rest) = line.strip_prefix("bm::") {
+        if let Some(rest) = line.strip_prefix("depict_qbdi::") {
             let Some((func, rest)) = rest.split_once('/') else {
                 // TODO not sure why some items do not finish?
                 continue;
             };
 
-            let (kind, count) = rest.split_once('/').unwrap();
+            let Some((kind, count)) = rest.split_once('/') else {
+                dbg!(rest);
+                continue;
+            };
             let Ok(count) = count.parse() else {
                 // TODO ...?
+                dbg!(kind, count, rest);
                 continue;
             };
 
-            total += count;
-
             let func = format!("{func:#}", func = rustc_demangle::demangle(func));
 
-            if options.skip_internals {
-                let bad_prefixes = &["std::", "core::", "alloc::", "_", "*", "OUTLINED_FUNCTION_"];
+            let item: &mut Item = if options.merge_internals {
+                // TODO some other things are needed here
+                let bad_prefixes = &[
+                    "std::",
+                    "core::",
+                    "alloc::",
+                    "_",
+                    "*",
+                    "OUTLINED_FUNCTION_",
+                    // "<std::",
+                ];
                 let skip = bad_prefixes.iter().any(|prefix| func.starts_with(prefix));
                 if skip {
-                    continue;
+                    &mut internal
+                } else {
+                    items.entry(func).or_default()
+                }
+            } else {
+                items.entry(func).or_default()
+            };
+
+            total.total += count;
+            item.total += count;
+
+            match kind {
+                "mem_read" => {
+                    item.mem_read = count;
+                    total.mem_read += count;
+                }
+                "mem_write" => {
+                    item.mem_write = count;
+                    total.mem_write += count;
+                }
+                "call" => {
+                    item.call = count;
+                    total.call += count;
+                }
+                "return" => {
+                    item.r#return = count;
+                    total.r#return += count;
+                }
+                "branch" => {
+                    item.branch = count;
+                    total.branch += count;
+                }
+                "compare" => {
+                    item.compare = count;
+                    total.compare += count;
+                }
+                "logic" => {
+                    item.logic = count;
+                    total.logic += count;
+                }
+                "arithmetic" => {
+                    item.arithmetic = count;
+                    total.arithmetic += count;
+                }
+                kind => {
+                    item.others.insert(kind.to_owned(), count);
+                    total.add_other(kind.to_owned(), count);
                 }
             }
-
-            let item = items.entry(func).or_default();
-
-            item.total += count;
-            item.instruction_kind.push((kind.to_owned(), count));
         } else {
             println!("{line}");
         }
@@ -138,12 +173,28 @@ pub fn run_qbdi(
 
     child.wait().unwrap();
 
+    if options.merge_internals {
+        items.insert("Internal".to_owned(), internal);
+    }
+
     let symbols: Vec<_> = items
         .into_iter()
         .map(|(name, item)| Entry {
             symbol_name: name,
-            total: item.total,
-            entries: item.instruction_kind,
+            statistics: Statistics {
+                total: item.total,
+                mem_read: item.mem_read,
+                mem_write: item.mem_write,
+                stack_read: item.stack_read,
+                stack_write: item.stack_write,
+                call: item.call,
+                r#return: item.r#return,
+                branch: item.branch,
+                compare: item.compare,
+                logic: item.logic,
+                arithmetic: item.arithmetic,
+                others: item.others,
+            },
         })
         .collect();
 

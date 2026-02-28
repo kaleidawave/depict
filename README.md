@@ -14,6 +14,12 @@ Modes:
 
 ## Required dependencies
 
+You can quickly install required dependencies for instruction counting with
+
+```shell
+depict install
+```
+
 ### QBDI
 
 The tool is compiled. Not sure whether QBDI is required is needed but you can get it on macos here.
@@ -47,9 +53,20 @@ You can get it on GitHub actions with the following.
     sdeVersion: 9.58.0 # possible values: 9.58.0 (default), 9.33.0
 ```
 
+## Notes
+
+- MacOs and Linux Rust builds get debug information. **Windows** release builds needs
+  ```toml
+  [profile.release-with-debug]
+  inherits = "release"
+  debug = true
+  ```
+
 ## TODO
 
 - Find some way to bundle the SDE and QBDI components
 - Explain difference between SDE and QBDI
 - Add wall-clock and unix-events tools
 - Get QBDI working on more platforms / backends
+- QBDI bitwise (`SHIFT`), `HINT`
+- Merge call and branch?

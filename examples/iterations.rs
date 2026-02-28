@@ -7,8 +7,8 @@ fn get_iterations() -> usize {
 }
 
 fn main() {
-    eprintln!("running!!!");
     let iterations = get_iterations();
+    eprintln!("Hello from `iterations.rs`. Running {iterations} iterations!!!");
     run(iterations);
 }
 

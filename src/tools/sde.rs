@@ -1,5 +1,6 @@
 use std::io::BufReader;
 use std::process::{Command, Stdio};
+use wait_timeout::ChildExt;
 
 pub const TEMP_FILE: &str = "sde-out.txt";
 
@@ -10,11 +11,18 @@ pub fn run_sde(
     let file_path: &str = options.keep.as_deref().unwrap_or(TEMP_FILE);
 
     // TODO hmm
-    let blocks = 50;
+    let blocks = 30;
 
     {
-        let sde_path = std::env::var("SDE_PATH").map(|dir| format!("{dir}/sde"));
-        let sde_path = sde_path.as_deref().unwrap_or("sde");
+        let sde_path = if let Some(path) = super::adjacent_sde_path(true)
+            && let Ok(true) = std::fs::exists(&path)
+        {
+            path.into_os_string().into_string().unwrap()
+        } else if let Ok(dir) = std::env::var("SDE_PATH") {
+            format!("{dir}/sde")
+        } else {
+            String::from("sde")
+        };
 
         let mut command = Command::new(sde_path);
         command.args([
@@ -27,35 +35,60 @@ pub fn run_sde(
         ]);
         command.arg(request.program);
         command.args(request.arguments);
-        command.stdout(Stdio::piped());
-        command.stderr(Stdio::piped());
+        command.stdout(Stdio::inherit());
+        command.stderr(Stdio::inherit());
 
         let mut child = command.spawn().unwrap();
-        let _ = child.wait().unwrap();
+        let secs = std::time::Duration::from_mins(3);
+        let _status_code = if let Some(status) = child.wait_timeout(secs).unwrap() {
+            status.code()
+        } else {
+            dbg!("sde timed out, killing");
+            child.kill().unwrap();
+            child.wait().unwrap().code()
+        };
     }
 
-    let file = std::fs::File::open(file_path).unwrap();
+    let file = std::fs::File::open(file_path).expect("sde did not create file");
 
     let out = BufReader::new(file);
 
-    let rows = sde_output_parser::parse(out, options.skip_internals);
+    // TODO want options.merge_internals, not skip internals
+    let rows = sde_output_parser::parse(out, false);
 
     let symbols: Vec<_> = rows
         .into_iter()
         .map(|(symbol_name, item)| crate::Entry {
             symbol_name,
-            total: item.total,
-            entries: vec![
-                ("mem_read".to_owned(), item.mem_read),
-                ("mem_write".to_owned(), item.mem_write),
-                ("stack_read".to_owned(), item.stack_read),
-                ("stack_write".to_owned(), item.stack_write),
-                ("call".to_owned(), item.call),
-            ],
+            statistics: crate::Statistics {
+                total: item.total,
+                mem_read: item.mem_read,
+                mem_write: item.mem_write,
+                stack_read: item.stack_read,
+                stack_write: item.stack_write,
+                call: item.call,
+                // TODO
+                compare: 0,
+                // TODO
+                arithmetic: 0,
+                // TODO
+                logic: 0,
+                // TODO
+                r#return: 0,
+                // TODO
+                branch: 0,
+                others: std::collections::HashMap::default(),
+            },
         })
         .collect();
 
-    let total = symbols.iter().fold(0, |acc, row| acc + row.total);
+    let total: crate::Statistics =
+        symbols
+            .iter()
+            .fold(crate::Statistics::default(), |mut acc, row| {
+                acc += row.statistics.clone();
+                acc
+            });
 
     if options.keep.is_none() {
         std::fs::remove_file(file_path).unwrap();
