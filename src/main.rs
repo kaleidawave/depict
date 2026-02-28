@@ -10,21 +10,20 @@ fn main() {
     let tool = args.next();
     let tool = tool.as_deref().unwrap_or("help");
 
-    let input = BenchmarkInput::from_arguments(args);
-
-    if input.limit != usize::MAX && input.sort.is_none() {
-        panic!("--limit requires --sort");
-    }
-
     match tool {
         "--info" | "--help" | "help" => {
             println!("depict");
-            println!("run 'qbdi', 'sde', 'perf-events' or 'time'");
+            println!("run 'count', 'install'"); // , 'perf-events' or 'time'
         }
         "time" => {
             todo!()
         }
         "qbdi" => {
+            let input = BenchmarkInput::from_arguments(args);
+
+            if input.limit != usize::MAX && input.sort.is_none() {
+                panic!("--limit requires --sort");
+            }
             let request = CommandRequest {
                 program: input.program.into(),
                 arguments: input.arguments.into_iter().map(Into::into).collect(),
@@ -44,6 +43,11 @@ fn main() {
         }
         #[cfg(any(target_arch = "x86", target_arch = "x86_64", debug_assertions))]
         "sde" => {
+            let input = BenchmarkInput::from_arguments(args);
+
+            if input.limit != usize::MAX && input.sort.is_none() {
+                panic!("--limit requires --sort");
+            }
             let request = CommandRequest {
                 program: input.program.into(),
                 arguments: input.arguments.into_iter().map(Into::into).collect(),
@@ -62,6 +66,11 @@ fn main() {
             );
         }
         "count" => {
+            let input = BenchmarkInput::from_arguments(args);
+
+            if input.limit != usize::MAX && input.sort.is_none() {
+                panic!("--limit requires --sort");
+            }
             let request = CommandRequest {
                 program: input.program.into(),
                 arguments: input.arguments.into_iter().map(Into::into).collect(),
@@ -90,13 +99,31 @@ fn main() {
         }
         "install" => {
             #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
-            tools::install_qbdi();
+            tools::install_qbdi(true, true);
 
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             tools::install_sde();
         }
         "install-qbdi" => {
-            tools::install_qbdi();
+            #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
+            {
+                let mut just_lib = false;
+                let mut just_qbdi = false;
+                for arg in args {
+                    if arg == "--lib" {
+                        just_lib = true;
+                    } else if arg == "--qbdi" {
+                        just_qbdi = true;
+                    } else {
+                        panic!("unknown {arg:?}");
+                    }
+                }
+                if !just_lib && !just_qbdi {
+                    just_lib = true;
+                    just_qbdi = true;
+                }
+                tools::install_qbdi(just_lib, just_qbdi);
+            }
         }
         #[cfg(any(target_os = "linux", target_os = "windows"))]
         "install-sde" => {
@@ -411,7 +438,7 @@ pub fn print_results(
                     // }
                     writeln!(to)?;
                 } else {
-                    write!(
+                    writeln!(
                         to,
                         "total: {count}",
                         count = count_with_seperator(row.statistics.total as usize)

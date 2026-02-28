@@ -40,16 +40,7 @@ pub fn run_qbdi(
             Command::new(preloader.display().to_string())
         };
         {
-            let library_name = "libqbdi_tracer.dll";
-            let library = root.parent().unwrap().join(library_name);
-            if !library.is_file() {
-                eprintln!(
-                    "{library_name:?} not adjacent to {root}. {library} does not exist",
-                    library = library.display(),
-                    root = root.display(),
-                );
-                return Err(());
-            }
+            let library = super::adjacent_qbdi_lib(true).unwrap();
             command.arg(library.display().to_string());
         }
 
@@ -61,34 +52,14 @@ pub fn run_qbdi(
 
         #[cfg(target_os = "macos")]
         {
-            let library_name = "libqbdi_tracer.dylib";
-            let root = std::env::current_exe().unwrap();
-            let library = root.parent().unwrap().join(library_name);
-            if !library.is_file() {
-                eprintln!(
-                    "{library_name:?} not adjacent to {root}. {library} does not exist",
-                    library = library.display(),
-                    root = root.display(),
-                );
-                return Err(());
-            }
+            let library = super::adjacent_qbdi_lib(true).unwrap();
             command.env("DYLD_BIND_AT_LAUNCH", "1");
             command.env("DYLD_INSERT_LIBRARIES", library.display().to_string());
         }
 
         #[cfg(target_os = "linux")]
         {
-            let library_name = "libqbdi_tracer.so";
-            let root = std::env::current_exe().unwrap();
-            let library = root.parent().unwrap().join(library_name);
-            if !library.is_file() {
-                eprintln!(
-                    "{library_name:?} not adjacent to {root}. {library} does not exist",
-                    library = library.display(),
-                    root = root.display(),
-                );
-                return Err(());
-            }
+            let library = super::adjacent_qbdi_lib(true).unwrap();
             command.env("LD_BIND_NOW", "1");
             command.env("LD_PRELOAD", dbg!(library.display().to_string()));
         }

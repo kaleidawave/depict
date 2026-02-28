@@ -11,12 +11,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         include:
-        - os: ubuntu-latest
-          # dynamic-library: libqbdi_tracer.so
-        - os: macos-latest
-          dynamic-library: libqbdi_tracer.dylib
         - os: windows-latest
-          # dynamic-library: libqbdi_tracer.dll
           executable-extension: '.exe'
 
     timeout-minutes: 3
@@ -25,25 +20,25 @@ jobs:
     - uses: actions/checkout@v4
     - uses: dtolnay/rust-toolchain@stable
 
-    - name: Check
-      run: cargo check
-
     - uses: jwlawson/actions-setup-cmake@v2
       if: ${{ matrix.os == 'macos-latest' }}
       with: { cmake-version: '3.31.7' }
     
-    # - name: Setup SDE binaries (linux or windows)
-    #   if: ${{ matrix.os == 'ubuntu-latest' || matrix.os == 'windows-latest' }}
-    #   uses: petarpetrovt/setup-sde@v3.0
-    #   with:
-    #     environmentVariableName: SDE_PATH # default value is `SDE_PATH`
-    #     sdeVersion: 9.58.0 # possible values: 9.58.0 (default), 9.33.0
+    - name: Get and build QBDI (macos)
+      if: ${{ matrix.os == 'macos-latest' }}
+      run: |
+        curl https://github.com/QBDI/QBDI/releases/download/v0.12.0/QBDI-0.12.0-osx-AARCH64.pkg -L > QBDI.pkg
+        sudo installer -pkg QBDI.pkg -target ~
+        bash build-qbdi.sh
 
     # - name: Get QBDI (linux)
     #   if: ${{ matrix.os == 'ubuntu-latest' }}
     #   run: |
     #     curl https://github.com/QBDI/QBDI/releases/download/v0.12.0/QBDI-0.12.0-ubuntu24.04-X86_64.deb -L > QBDI.deb
     #     sudo dpkg -i QBDI.deb
+
+    - name: Check
+      run: cargo check
 
     - name: Build binary and iterations example
       shell: bash
@@ -52,38 +47,11 @@ jobs:
         cargo build --example iterations --profile release-with-debug
         mv target/release-with-debug/examples/iterations${{ matrix.executable-extension }} .
         mv target/release-with-debug/depict${{ matrix.executable-extension }} .
-    
-    - name: Get and build QBDI (macos)
-      if: ${{ matrix.os == 'macos-latest' }}
-      run: |
-        # curl https://github.com/QBDI/QBDI/releases/download/v0.12.0/QBDI-0.12.0-osx-AARCH64.pkg -L > QBDI.pkg
-        # sudo installer -pkg QBDI.pkg -target ~
 
-        ./depict install
-
-        bash build-qbdi.sh
-        mv 'qbdi/build/${{ matrix.dynamic-library }}' .
-
-    - name: Get SDE
-      if: ${{ matrix.os == 'ubuntu-latest' || matrix.os == 'windows-latest' }}
+    - name: Install depndencies
       run: ./depict install
-    
-    # - name: Get QBDI (windows)
-    #   if: ${{ matrix.os == 'windows-latest' }}
-    #   run: |
-    #     curl https://github.com/QBDI/QBDI/releases/download/v0.12.0/QBDI-0.12.0-windows-X86_64.exe -L > QBDI.exe
-    #     runas /user:Administrator "./QBDI.exe"
-    #     ls 'C:\Program Files'
 
-    # - name: Investigate QBDI (linux)
-    #   if: ${{ matrix.os == 'ubuntu-latest' }}
-    #   run: |
-    #     chmod +x ${{ matrix.dynamic-library }}
-    #     LD_BIND_NOW=1 LD_PRELOAD="$(realpath ${{ matrix.dynamic-library }})" ./iterations 10
-    #     echo "---"
-    #     sudo LD_BIND_NOW=1 LD_PRELOAD="$(realpath ${{ matrix.dynamic-library }})" ./iterations 10
-
-    - name: Run iterations (QBDI or SDE)
+    - name: Run iterations
       shell: bash
       run: |
         for i in {0..3}
@@ -94,20 +62,28 @@ jobs:
           echo "::endgroup::"
         done
 
+    - name: Run iterations (breakdown)
+      shell: bash
+      run: |
+        for i in {0..3}
+        do
+          i=$((10**i))
+          echo "::group::./depict${{ matrix.executable-extension }} count --breakdown ./iterations $i"
+          ./depict${{ matrix.executable-extension }} count --breakdown ./iterations $i
+          echo "::endgroup::"
+        done
+
   make-release:
     needs: check
 
+    # Publish on `main` branch additions
     if: ${{ github.ref_name == 'main' }}
 
     runs-on: ubuntu-latest
 
     permissions: { contents: write }
-
-    env: 
-      version: "0.1.0"
-
-    outputs: 
-      version: "v${{ env.version }}"
+    env: { version: "${{ secrets.NEXT_VERSION }}" }
+    outputs: { version: "v${{ env.version }}" }
 
     steps:
     - uses: actions/checkout@v6  
@@ -147,13 +123,10 @@ jobs:
         - os: windows-latest
           platform-name: x86_64-pc-windows
           executable-extension: ".exe"
-          # dynamic-library: libqbdi_tracer.dll
         - os: ubuntu-latest
           platform-name: x86_64-unknown-linux
-          # dynamic-library: libqbdi_tracer.so
         - os: macos-latest
           platform-name: aarch64-apple-darwin
-          dynamic-library: libqbdi_tracer.dylib
 
     runs-on: ${{ matrix.os }}
 
@@ -168,33 +141,17 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       # build dependents
-      - uses: jwlawson/actions-setup-cmake@v2
-        with: { cmake-version: '3.31.7' }
-      
-      - name: Check
-        run: cargo check
 
-      # - name: Get QBDI (linux)
-      #   if: ${{ matrix.os == 'ubuntu-latest' }}
-      #   run: |
-      #     curl https://github.com/QBDI/QBDI/releases/download/v0.12.0/QBDI-0.12.0-ubuntu24.04-X86_64.deb -L > QBDI.deb
-      #     sudo dpkg -i QBDI.deb
+      - uses: jwlawson/actions-setup-cmake@v2
+        if: ${{ matrix.os == 'macos-latest' }}
+        with: { cmake-version: '3.31.7' }
       
       - name: Get QBDI (macos)
         if: ${{ matrix.os == 'macos-latest' }}
         run: |
           curl https://github.com/QBDI/QBDI/releases/download/v0.12.0/QBDI-0.12.0-osx-AARCH64.pkg -L > QBDI.pkg
           sudo installer -pkg QBDI.pkg -target ~
-          
           bash build-qbdi.sh
-          mv 'qbdi/build/${{ matrix.dynamic-library }}' .
-          gh release upload $GH_RELEASE "${{ matrix.dynamic-library }}" --clobber
-      
-      # - name: Get QBDI (windows)
-      #   if: ${{ matrix.os == 'windows-latest' }}
-      #   run: |
-      #     curl https://github.com/QBDI/QBDI/releases/download/v0.12.0/QBDI-0.12.0-windows-X86_64.exe -L > QBDI.exe
-      #     ./QBDI.exe
 
       # end build dependents
 
@@ -208,9 +165,3 @@ jobs:
           TO='depict-${{ matrix.platform-name }}${{ matrix.executable-extension }}'
           mv $FROM $TO
           gh release upload $GH_RELEASE "$TO" --clobber
-
-      # - name: Copy QBDIPreload (windows)
-      #   if: ${{ matrix.os == 'windows-latest' }}
-      #   run: |
-      #     mv "$(which qbdi-template-X86_64)/../QBDIWinPreloader.exe" .
-      #     gh release upload $GH_RELEASE QBDIWinPreloader.exe --clobber

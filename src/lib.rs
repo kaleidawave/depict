@@ -85,7 +85,7 @@ impl std::ops::AddAssign for Statistics {
 
 impl Statistics {
     #[must_use]
-    pub fn as_rows(&self) -> Vec<(&str, u32)> {
+    pub fn as_rows(&self) -> [(&str, u32); 12] {
         let Self {
             total,
             mem_read,
@@ -100,7 +100,7 @@ impl Statistics {
             logic,
             others,
         } = self;
-        vec![
+        [
             ("total", *total),
             ("mem_read", *mem_read),
             ("mem_write", *mem_write),

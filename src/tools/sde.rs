@@ -1,5 +1,6 @@
 use std::io::BufReader;
 use std::process::{Command, Stdio};
+use wait_timeout::ChildExt;
 
 pub const TEMP_FILE: &str = "sde-out.txt";
 
@@ -13,7 +14,7 @@ pub fn run_sde(
     let blocks = 30;
 
     {
-        let sde_path = if let Some(path) = super::adjacent_sde_path()
+        let sde_path = if let Some(path) = super::adjacent_sde_path(true)
             && let Ok(true) = std::fs::exists(&path)
         {
             path.into_os_string().into_string().unwrap()
@@ -38,9 +39,6 @@ pub fn run_sde(
         command.stderr(Stdio::inherit());
 
         let mut child = command.spawn().unwrap();
-
-        use wait_timeout::ChildExt;
-
         let secs = std::time::Duration::from_mins(3);
         let _status_code = if let Some(status) = child.wait_timeout(secs).unwrap() {
             status.code()
